@@ -1,4 +1,9 @@
-arch-perl-0.4.1 (19-Jan-2005)
+arch-perl-0.4.2 (30-Jan-2005)
+
+* Supported baz 1.1, set environment variable ARCH_BACKEND=baz to activate.
+* Added options in Arch::Session::get_tree.
+
+arch-perl-0.4.1 (18-Jan-2005)
 
 * Improved Arch::Storage documentation.
 * Added "make debian" to bring debian/ subdirectory for those who need it.

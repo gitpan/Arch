@@ -226,7 +226,7 @@ sub get_changeset ($;$) {
 	my $self = shift;
 	my $dir = shift;
 	my $revision = $self->working_name;
-	die "get_tree: no working revision\n" unless $revision->is_valid('revision');
+	die "get_changeset: no working revision\n" unless $revision->is_valid('revision');
 	return $self->get_revision_changeset($revision, $dir);
 }
 
@@ -243,20 +243,29 @@ sub get_revision_log ($$) {
 sub get_log ($) {
 	my $self = shift;
 	my $revision = $self->working_name;
-	die "get_tree: no working revision\n" unless $revision->is_valid('revision');
+	die "get_log: no working revision\n" unless $revision->is_valid('revision');
 	return $self->get_revision_log($revision);
 }
 
-sub get_tree ($;$$) {
+sub get_tree ($;$$%) {
 	my $self = shift;
+	my $opts = shift if ref($_[0]) eq 'HASH';
 	my $revision = $self->_name_operand(shift);
-	die "get_tree: no b|v|r\n" unless $revision->is_valid('branch+');
+	die "get_tree: no r|v|b ($revision)\n" unless $revision->is_valid('branch+');
 
 	my $dir = shift || temp_dir_name("arch-tree");
 	die "get_tree: no directory name (internal error?)\n" unless $dir;
 	die "get_tree: directory already exists ($dir)\n" if -d $dir;
 
-	run_tla("get --silent --no-pristine", $revision, $dir);
+	my @args = ();
+	push @args, "--no-pristine" unless $opts->{pristine};
+	push @args, "--link" if $opts->{link};
+	push @args, "--library" if $opts->{library};
+	push @args, "--sparse" if $opts->{sparse};
+	push @args, "--non-sparse" if $opts->{non_sparse};
+	push @args, "--no-greedy-add" if $opts->{no_greedy_add};
+
+	run_tla("get --silent", @args, $revision, $dir);
 	die "Can't get revision $revision from archive.\n"
 		. "Unexisting revision or system problems.\n"
 		unless -d $dir;
@@ -354,11 +363,15 @@ By default all cached keys are cleared; I<key> may be one of the strings
 'archives', 'categories', 'branches', 'versions', 'revisions' or
 'revision_descs'.
 
-=item B<get_tree> [I<revision> [I<dir>]]
+=item B<get_tree> [{ I<options> }] [I<revision> [I<dir>]]
 
 Construct a working tree for I<revision> or B<working_name> in
 I<dir>. If I<dir> is not specified, a new temporary directory is
 automatically created.
+
+Keys of I<options> may be I<pristine>, I<link>, I<library>, I<sparse>,
+I<non_sparse>, I<no_greedy_add>; all are false by default.
+See C<tla get>.
 
 =item B<init_tree> I<dir>
 

@@ -21,7 +21,7 @@ package Arch;
 
 use vars qw($VERSION);
 
-$VERSION = '0.4.1';
+$VERSION = '0.4.2';
 $VERSION = eval $VERSION;
 
 1;
@@ -34,7 +34,7 @@ Arch - GNU Arch Perl library
 
 =head1 SYNOPSIS 
 
-    use Arch 0.4.0;
+    use Arch 0.4.2;
 
     # perldoc Arch
     # axp man Arch
@@ -56,7 +56,7 @@ The Arch-Perl library allows Perl developers to create GNU Arch front-ends
 in an object oriented fashion. GNU Arch is a decentralized, changeset-oriented
 revision control system.
 
-Currently, a pragmatic high-level interface is built around tla.
+Currently, a pragmatic high-level interface is built around tla or baz.
 This functionality was initially developed for ArchZoom project,
 and was highly enhanced to serve AXP and ArchWay projects as well.
 

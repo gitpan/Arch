@@ -19,7 +19,7 @@ use strict;
 
 package Arch::Tree;
 
-use Arch::Util qw(run_tla load_file _parse_revision_descs adjacent_revision);
+use Arch::Util qw(run_tla load_file _parse_revision_descs adjacent_revision is_baz);
 use Arch::Name;
 use Arch::Log;
 use Arch::Inventory;
@@ -65,7 +65,8 @@ sub get_id_tagging_method ($) {
 sub get_version ($) {
 	my $self = shift;
 	return $self->{version} if $self->{version};
-	my ($version) = run_tla("tree-version", $self->{dir});
+	my @add_params = is_baz()? ("-d"): ();
+	my ($version) = run_tla("tree-version", @add_params, $self->{dir});
 	return $self->{version} = $version;
 }
 
@@ -74,7 +75,8 @@ sub set_version ($$) {
 	my $version = shift;
 
 	delete $self->{version};
-	run_tla("set-tree-version", "-d", $self->{dir}, $version);
+	my $cmd = is_baz()? "tree-version": "set-tree-version";
+	run_tla($cmd, "-d", $self->{dir}, $version);
 
 	return $?;
 }
@@ -160,18 +162,49 @@ sub get_inventory ($) {
 # TODO: properly support escaping
 sub get_changes ($) {
 	my $self = shift;
-	my @cha_temp = run_tla("changes", "-d", $self->{dir});
+	my $is_baz = is_baz();
+	my @args = is_baz? ("status"): ("changes", "-d");
+	my @lines = run_tla(@args, $self->{dir});
+
+	my $baz_1_1_conversion_table;
+	$baz_1_1_conversion_table = {
+		'A ' => [ 'A ', 'A/' ],
+		'D ' => [ 'D ', 'D/' ],
+		'R ' => [ '=>', '/>' ],
+		' M' => [ 'M ', '??' ],
+		' P' => [ '--', '-/' ],
+	} if $is_baz;
 
 	my $changes = Arch::Changes->new;
-	foreach my $line (@cha_temp) {
-		next if ($line =~ /^\*/);
+	foreach my $line (@lines) {
+		next if $line =~ /^\*/;
+		next if $line eq "";
+
+		# work around baz-1.1 tree-lint messages
+		last if $line =~ /^These files would be source but lack inventory ids/;
+
+		# support baz
+		if ($is_baz && $line =~ /^([ADR ][ MP])  (.+?)(?: => (.+))?$/) {
+			my $tla_prefix = $baz_1_1_conversion_table->{$1};
+			die "Unknown 'baz status' line: $line\n" unless $tla_prefix;
+			# baz-1.1 lacks info about dirs, so stat file (may not work)
+			my $is_dir = $1 eq 'R '
+				? -d "$self->{dir}/$3"
+				: -d "$self->{dir}/$2";
+			$line = $tla_prefix->[$is_dir] . " $2";
+			$line .= "\t$3" if $3;
+		}
 
 		$line =~ m!^([ADM=/-])([ />b-]) ([^\t]+)(?:\t([^\t]+))?$!
 			or die("Unrecognized changes line: $line\n");
 
-		my $type   = $1 ne '/' ? $1 : $2;
+		my $type   = $1;
 		my $is_dir = ($1 eq '/') || ($2 eq '/');
 		my @args   = ($3, $4);
+
+		# fix tla changes inconsistency with renamed directories ('/>' vs '=/')
+		$type = '=' if $type eq '/';
+
 		$changes->add($type, $is_dir, @args);
 	}
 
@@ -185,7 +218,8 @@ sub get_changeset ($$) {
 	die("Directory already exists: $dir\n")
 		if (-d $dir);
 
-	run_tla("changes", "-d", $self->{dir}, "-o", $dir);
+	my $cmd = is_baz()? "diff": "changes";
+	run_tla($cmd, "-d", $self->{dir}, "-o", $dir);
 
 	return -d $dir ? Arch::Changeset->new("changes.".$self->get_version(), $dir) : undef;
 }
@@ -415,7 +449,7 @@ sub import ($;$@) {
 	foreach my $opt (qw(archive dir log summary log-message)) {
 		push @args, "--$opt", $opts->{$opt} if $opts->{$opt};
 	}
-	push @args, "--setup" if $opts->{setup};
+	push @args, "--setup" unless is_baz() || $opts->{nosetup};
 
 	run_tla("import", @args, $version);
 

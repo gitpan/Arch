@@ -20,16 +20,30 @@ use strict;
 package Arch::Util;
 
 use Exporter;
-use vars qw(@ISA @EXPORT_OK $TLA);
+use vars qw(@ISA @EXPORT_OK $ARCH_BACKEND);
 @ISA = qw(Exporter);
 @EXPORT_OK = qw(
-	run_pipe_from run_cmd run_tla load_file save_file
+	arch_backend is_baz
+	run_pipe_from run_cmd run_tla
+	load_file save_file
 	copy_dir remove_dir setup_config_dir
 	standardize_date date2daysago parse_creator_email adjacent_revision
 	_parse_revision_descs
 );
 
-$TLA = $ENV{TLA} || "tla";
+sub arch_backend (;$) {
+	$ARCH_BACKEND = shift if @_;
+	$ARCH_BACKEND ||= $ENV{TLA} || $ENV{ARCH_BACKEND} || "tla";
+	return $ARCH_BACKEND;
+}
+
+sub is_baz () {
+	return scalar(($ARCH_BACKEND || "") =~ m!(^|/)baz[^/]*$!);
+}
+
+BEGIN {
+	arch_backend(undef);
+}
 
 sub run_pipe_from (@) {
 	my $arg0 = shift || die;
@@ -62,7 +76,7 @@ sub run_cmd (@) {
 
 sub run_tla (@) {
 	my $arg1 = shift || die;
-	unshift @_, $TLA, split(' ', $arg1);
+	unshift @_, $ARCH_BACKEND, split(' ', $arg1);
 	goto \&run_cmd;
 }
 
@@ -207,6 +221,9 @@ sub _parse_revision_descs ($$) {
 			or die "Unexpected output of tla, subline 2:\n\t$line2\n";
 		$date = standardize_date($date);
 
+		my @version_part;
+		push @version_part, 'version', $1 if $name =~ s/^(.*)--(.*)/$2/;
+
 		my ($creator_name, $creator_email) = parse_creator_email($creator);
 		push @revision_descs, {
 			name    => $name,
@@ -215,6 +232,7 @@ sub _parse_revision_descs ($$) {
 			email   => $creator_email,
 			date    => $date,
 			kind    => $kind,
+			@version_part,
 		};
 	}
 	return \@revision_descs;

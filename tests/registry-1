@@ -7,7 +7,7 @@ use FindBin;
 use lib "$FindBin::Bin/../perllib";
 
 use Test::More tests => 19;
-use_ok("Arch::Util", "run_tla");
+use_ok("Arch::Util", "run_tla", "is_baz");
 use_ok("Arch::TempFiles");
 use_ok("Arch::Registry");
 
@@ -36,21 +36,27 @@ ok($success, "register-archive $archive1");
 $success = $registry->register_archive("$dir/$archive1");
 ok($success, "register-archive $archive1 with location only");
 
-$success = $registry->register_archive($dir, $archive2);
-ok($success, "register-archive $archive2");
+my $is_baz = is_baz();
+my $num_archives = $is_baz? 1: 2;
 
 open OLDERR, ">&STDERR";
 close STDERR; *OLDERR = *OLDERR;
+$success = $registry->register_archive($dir, $archive2);
+ok($success ^ $is_baz, "register-archive $archive2");
+
 $success = $registry->register_archive("$dir/$archive3");
 open STDERR, ">&OLDERR";
 ok(!$success, "register-archive with unexisting location");
 
 my %archives = $registry->registered_archives;
-ok(%archives && keys %archives == 2,       "check that there are 2 archives");
+is(%archives && keys %archives, $num_archives, "check the number of archives");
 ok($archives{$archive1},                   "- including $archive1");
 is($archives{$archive1}, "$dir/$archive1", "- - and its location");
+SKIP: {
+skip("baz has changed register-archive", 2) if $is_baz;
 ok($archives{$archive2},                   "- including $archive2");
 is($archives{$archive2}, "$dir",           "- - and its location");
+}
 
 $success = $registry->unregister_archive($archive1);
 ok($success, "unregister-archive $archive1");

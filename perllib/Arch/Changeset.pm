@@ -211,16 +211,17 @@ sub get_changes ($) {
 			exists $mod_dirs{$id} &&
 			$orig_dirs{$id} ne $mod_dirs{$id}
 		) {
-			my ($orig_parent, $mod_parent, $found) =
-				($orig_dirs{$id}, $mod_dirs{$id}, 0);
+			(my $parent = $orig_dirs{$id}) =~ s!/?[^/]+$!!;
+			my $tail = $&;
+			my $found  = 0;
 
-			do {
-				$orig_parent =~ s!/?[^/]+$!!;
-				$mod_parent =~ s!/?[^/]+$!!;
+			while (!$found && $parent) {
+				$found = exists $ren_dirs{$parent}
+					&& (($ren_dirs{$parent} . $tail) eq $mod_dirs{$id});
 
-				$found = exists $ren_dirs{$orig_parent}
-					&& ($ren_dirs{$orig_parent} eq $mod_parent);
-			} while (!$found && $orig_parent && $mod_parent);
+				$parent =~ s!/?[^/]+$!!;
+				$tail = $& . $tail;
+			}
 
 			$changes->add(RENAME, 1, $orig_dirs{$id}, $mod_dirs{$id})
 				if !$found;
@@ -234,16 +235,19 @@ sub get_changes ($) {
 			exists $mod_files{$id} &&
 			$orig_files{$id} ne $mod_files{$id}
 		) {
-			my ($orig_parent, $mod_parent, $found) =
-				($orig_dirs{$id}, $mod_dirs{$id}, 0);
+			(my $parent = $orig_files{$id}) =~ s!/?[^/]+$!!;
+			my $tail = $&;
+			my $found  = 0;
 
-			do {
-				$orig_parent =~ s!/?[^/]+$!!;
-				$mod_parent =~ s!/?[^/]+$!!;
+			while (!$found && $parent) {
+				last if $tail =~ m!^/\.arch-ids/!;
 
-				$found = exists $ren_dirs{$orig_parent}
-					&& ($ren_dirs{$orig_parent} eq $mod_parent);
-			} while (!$found && $orig_parent && $mod_parent);
+				$found = exists $ren_dirs{$parent}
+					&& (($ren_dirs{$parent} . $tail) eq $mod_files{$id});
+
+				$parent =~ s!/?[^/]+$!!;
+				$tail = $& . $tail;
+			}
 
 			$changes->add(RENAME, 0, $orig_files{$id}, $mod_files{$id})
 				if !$found;

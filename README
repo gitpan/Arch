@@ -1,12 +1,16 @@
+Welcome to Arch-Perl 0.4.2.
+
 The arch-perl project aims to create Perl library for GNU Arch.
 
-Currently, a pragmatic high-level interface is built around tla.
+Currently, a pragmatic high-level interface is built around tla or baz.
 This functionality was initially developed for ArchZoom project,
 and was highly enhanced to serve AXP and ArchWay projects as well.
 
 Feel free to participate in creating the best possible design.
 
 arch-perl is tested with perl-5.00503, perl-5.6.x and perl-5.8.x.
+arch-perl is tested with tla-1.1, tla-1.2, tla-1.3 and baz-1.1.
+Use environment variable ARCH_BACKEND to set path to tla or baz.
 
 -- 
 Mikhael Goikhman <migo@homemail.com>

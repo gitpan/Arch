@@ -10,7 +10,7 @@ use lib "$FindBin::Bin/../perllib";
 use Test::More tests => 14;
 
 BEGIN {
-	use_ok("Arch::Util", "run_tla", "save_file");
+	use_ok("Arch::Util", "run_tla", "save_file", "is_baz");
 	use_ok("Arch::TempFiles");
 	use_ok("Arch::Session");
 	use_ok("Arch::Tree");
@@ -37,10 +37,15 @@ my $arch_fqv     = "$arch_archive/$arch_version";
 my $arch_archdir = "$TEMP_DIR/archive";
 my $arch_projdir = "$TEMP_DIR/project";
 
+my $is_baz = is_baz();
+
 # create archive
 run_tla0("my-id",         $arch_id);
 run_tla0("make-archive",  $arch_archive, $arch_archdir);
+SKIP: {
+skip("baz has removed archive-setup", 1) if $is_baz;
 run_tla0("archive-setup", $arch_fqv);
+}
 
 # setup project
 mkdir($arch_projdir, 0777);

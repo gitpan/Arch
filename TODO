@@ -1,4 +1,5 @@
 General tasks:
 
 	* complete casual missing class pods
+	* implement Arch::TestFramework to facilitate creating test archives
 	* improve tests for all classes
