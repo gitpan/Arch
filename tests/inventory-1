@@ -1,0 +1,63 @@
+#!/usr/bin/perl -w
+
+# The script tests Arch::Inventory methods.
+
+use FindBin;
+use lib "$FindBin::Bin/../perllib";
+
+use Test::More tests => 11;
+
+BEGIN {
+	use_ok("Arch::Inventory", qw(:category :type));
+}
+
+my $root = "$FindBin::Bin/..";
+
+my $expected_listing = `cd $root && tla inventory -tspbju -B --kind --ids --untagged`;
+my $expected_root = {
+	category => TREE,
+	untagged => 0,
+	type     => DIRECTORY,
+	path     => '',
+	id       => undef,
+	id_type  => undef,
+};
+my $expected_test = {
+	category => SOURCE,
+	untagged => '',
+	type     => FILE,
+	path     => 'tests/inventory-1',
+	id       => 'x_Enno_Cramer_<uebergeek@web.de>_Thu_Sep_30_23:07:28_2004_13483.0',
+	id_type  => 'x',
+};
+
+SKIP: {
+my $inv = Arch::Inventory->new($root);
+my $listing = $inv->get_listing;
+ok($listing,                        "inventory listing");
+skip("temporarily disabled", 9);
+is_deeply(
+	[ sort split(/\n/, $listing) ], [ sort split(/\n/, $expected_listing) ],
+	"correct inventory listing"
+);
+
+my $root = $inv->get_root_entry;
+my $children = delete $root->{children};
+ok($root,                           "root entry");
+$root->{category} = 'T' unless -d "{arch}";
+is_deeply($root, $expected_root,    "correct root entry");
+$root->{children} = $children;
+
+my $entry = $inv->get_entry('');
+ok($entry,                          "root entry via get_entry");
+is($entry, $root,                   "is root entry");
+
+$entry = $inv->get_entry($expected_test->{path});
+skip("not in arch tree", 4) unless defined $entry;
+ok($entry,                          "test script entry");
+is_deeply($entry, $expected_test,   "correct test script entry");
+
+my $entry2 = $inv->get_entry(split /\//, $expected_test->{path});
+ok($entry2,                         "get_entry by path list");
+is($entry2, $entry,                 "is same test entry");
+}

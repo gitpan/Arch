@@ -1,0 +1,87 @@
+#!/usr/bin/perl -w
+
+# The script tests Arch::Session methods.
+
+use FindBin;
+use lib "$FindBin::Bin/../perllib";
+
+use Test::More tests => 31;
+use_ok("Arch::Util", "run_tla", "save_file");
+use_ok("Arch::TempFiles");
+use_ok("Arch::Session");
+
+my $tmp = Arch::TempFiles->new;
+my $dir = $tmp->dir;
+die "Internal: Arch::TempFiles::dir didn't create dir\n" unless $dir && -d $dir;
+
+chdir($dir) or die "Internal: can't chdir $dir\n";
+$ENV{HOME} = $dir;
+
+sub run_tla0 (@) {
+	my $cmd = "'tla " . join(" ", @_) . "'";
+	run_tla(@_);
+	fail($cmd), die "$cmd failed: $?\n" if $?;
+	pass($cmd);
+}
+
+my $archive = 'arch-perl@example.com--test';
+my $userid = 'Arch Perl <arch-perl@example.com>';
+
+run_tla0("my-id", $userid);
+run_tla0("make-archive $archive $dir/$archive");
+run_tla0("archive-setup $archive/cat--brn--0");
+run_tla0("archive-setup $archive/cat--brn--1");
+
+my $dir2 = "$dir/tree_a";
+mkdir($dir2, 0777) or die "Can't mkdir $dir2: $!";
+chdir($dir2) or die "Can't chdir $dir2: $!";
+
+my $session = new Arch::Session;
+isa_ok($session, 'Arch::Session', "create Arch::Session instanse");
+is($session->my_id, $userid, "read my-id");
+is($session->my_id("bad_id"), 0, "set bad my-id");
+is($session->my_id, $userid, "read my-id again");
+is($session->my_id('<my@email>'), 1, "set good my-id");
+is($session->my_id, '<my@email>', "read my-id one more time");
+
+my $tree = $session->init_tree("$archive/cat--dog--0.1");
+ok($tree && ref($tree) eq 'Arch::Tree', "create Arch::Tree instanse");
+
+mkdir("foo", 0777) or die "Can't mkdir foo: $!";
+save_file("foo/bar", "Just foo bar");
+$tree->add("foo", "foo/bar");
+is($?, 0, "add 2 files");
+$tree->import({ setup => 1 });
+is($?, 0, "import with setup");
+
+$session->working_names($archive);
+is($session->working_name, $archive);
+my $categories = $session->categories;
+is(ref($categories), 'ARRAY');
+ok(@$categories == 1 && $categories->[0] eq 'cat');
+
+$session->working_names($archive, 'cat');
+is($session->working_name, "$archive/cat");
+my $branches = $session->branches;
+is(ref($branches), 'ARRAY');
+ok(@$branches == 2 && $branches->[1] eq 'cat--dog');
+
+$session->working_names($archive, 'cat', 'brn');
+is($session->working_name, "$archive/cat--brn");
+my $versions = $session->versions;
+is(ref($versions), 'ARRAY');
+ok(@$versions == 2 && $versions->[1] eq "cat--brn--1");
+
+$session->working_names($archive, 'cat', 'dog', '0.1');
+is($session->working_name, "$archive/cat--dog--0.1");
+my $revisions = $session->revisions;
+is(ref($revisions), 'ARRAY');
+ok(@$revisions == 1 && $revisions->[0] eq "base-0");
+
+ok($session->is_archive_registered($archive));
+ok(!$session->is_archive_registered('some@thing--test'));
+
+is_deeply($session->expanded_revisions, [ "$archive/cat--dog--0.1--base-0" ]);
+
+# TODO in tests/session-2:
+#   get_revision_descs, expanded_archive_info, get_log, get_changeset
