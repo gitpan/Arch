@@ -21,7 +21,7 @@ package Arch;
 
 use vars qw($VERSION);
 
-$VERSION = '0.4.0';
+$VERSION = '0.4.1';
 $VERSION = eval $VERSION;
 
 1;

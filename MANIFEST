@@ -33,6 +33,7 @@ tests/log-1
 tests/name-1
 tests/name-2
 tests/name-3
+tests/name-4
 tests/registry-1
 tests/registry-2
 tests/session-1

@@ -198,20 +198,56 @@ sub get_changes ($) {
 			if (-f $self->{dir} . '/patches/' . $mod_files{$id} . '.meta-mod');
 	}
 
+	my %ren_dirs;
+	foreach (keys %orig_dirs) {
+		$ren_dirs{$orig_dirs{$_}} = $mod_dirs{$_}
+			if exists $mod_dirs{$_};
+	}
+
 	# moved dirs
 	foreach my $id (keys %orig_dirs) {
-		$changes->add(RENAME, 1, $orig_dirs{$id}, $mod_dirs{$id})
-			if (exists $orig_dirs{$id} &&
-			    exists $mod_dirs{$id} &&
-			    $orig_dirs{$id} ne $mod_dirs{$id});
+		if (
+			exists $orig_dirs{$id} &&
+			exists $mod_dirs{$id} &&
+			$orig_dirs{$id} ne $mod_dirs{$id}
+		) {
+			my ($orig_parent, $mod_parent, $found) =
+				($orig_dirs{$id}, $mod_dirs{$id}, 0);
+
+			do {
+				$orig_parent =~ s!/?[^/]+$!!;
+				$mod_parent =~ s!/?[^/]+$!!;
+
+				$found = exists $ren_dirs{$orig_parent}
+					&& ($ren_dirs{$orig_parent} eq $mod_parent);
+			} while (!$found && $orig_parent && $mod_parent);
+
+			$changes->add(RENAME, 1, $orig_dirs{$id}, $mod_dirs{$id})
+				if !$found;
+		}
 	}
 
 	# moved files
 	foreach my $id (keys %orig_files) {
-		$changes->add(RENAME, 0, $orig_files{$id}, $mod_files{$id})
-			if (exists $orig_files{$id} &&
-			    exists $mod_files{$id} &&
-			    $orig_files{$id} ne $mod_files{$id});
+		if (
+			exists $orig_files{$id} &&
+			exists $mod_files{$id} &&
+			$orig_files{$id} ne $mod_files{$id}
+		) {
+			my ($orig_parent, $mod_parent, $found) =
+				($orig_dirs{$id}, $mod_dirs{$id}, 0);
+
+			do {
+				$orig_parent =~ s!/?[^/]+$!!;
+				$mod_parent =~ s!/?[^/]+$!!;
+
+				$found = exists $ren_dirs{$orig_parent}
+					&& ($ren_dirs{$orig_parent} eq $mod_parent);
+			} while (!$found && $orig_parent && $mod_parent);
+
+			$changes->add(RENAME, 0, $orig_files{$id}, $mod_files{$id})
+				if !$found;
+		}
 	}
 
 	return $changes;

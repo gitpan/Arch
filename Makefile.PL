@@ -63,5 +63,11 @@ sub MY::postamble {
 test-network:
 	@env USE_NETWORK=1 $(MAKE) test
 
+debian:
+	tla register-archive \
+		http://arch.debian.org/arch/private/schizo/debian--2004 \
+		2>/dev/null || true
+	tla get schizo@debian.org--2004-primary/arch-perl-debian--debian debian
+
 MAKE_FRAG
 }

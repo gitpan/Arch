@@ -42,7 +42,9 @@ sub new ($;$%) {
 		hide_ids => $init{hide_ids},
 	};
 
-	return bless $self, $class;
+	bless $self, $class;
+	$self->clear_cache;
+	return $self;
 }
 
 sub root ($) {
@@ -333,6 +335,22 @@ sub get_ancestry_revision_descs ($;$$) {
 	});
 }
 
+sub clear_cache ($;@) {
+	my $self = shift;
+	my @keys = @_;
+
+	@keys = qw(missing_revision_descs missing_revisions);
+	foreach (@keys) {
+		if (@_ && !exist $self->{$_}) {
+			warn __PACKAGE__ . "::clear_cache: unknown key ($_), ignoring\n";
+			next;
+		}
+		$self->{$_} = {};
+	}
+
+	return $self;
+}
+
 sub add ($;@) {
 	my $self = shift;
 	my $opts = shift if ref($_[0]) eq 'HASH';
@@ -474,6 +492,7 @@ B<get_missing_revisions>,
 B<get_missing_revision_descs>,
 B<iterate_ancestry_logs>,
 B<get_ancestry_revision_descs>,
+B<clear_cache>,
 B<add>,
 B<import>,
 B<commit>.
@@ -595,6 +614,14 @@ If I<one_version> is set then stop to report revision descriptions from the
 versions different than the initial version. I<one_version> flag is similar
 to I<no_continuation> flag in another method, but not the same, since it is
 possible to tag into the same version.
+
+=item B<clear_cache> [key ..]
+
+For performance reasons, some method results are cached (memoized in fact).
+Use this method to explicitly request this cache to be cleared.
+
+By default all cached keys are cleared; I<key> may be one of the strings
+'missing_revision_descs', 'missing_revisions'.
 
 =item B<add> [{ I<options> }] file ...
 

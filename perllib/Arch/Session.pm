@@ -117,15 +117,20 @@ sub get_revision_descs ($;$) {
 
 *revision_details = *get_revision_descs; *revision_details = *revision_details;
 
-sub clear_cache ($) {
+sub clear_cache ($;@) {
 	my $self = shift;
+	my @keys = @_;
 
-	$self->{archives} = undef;
-	$self->{categories} = {};
-	$self->{branches} = {};
-	$self->{versions} = {};
-	$self->{revisions} = {};
-	$self->{revision_descs} = {};
+	@keys = qw(archives categories branches versions revisions revision_descs);
+	foreach (@keys) {
+		if (@_ && !exist $self->{$_}) {
+			warn __PACKAGE__ . "::clear_cache: unknown key ($_), ignoring\n";
+			next;
+		}
+		$self->{$_} = $_ eq 'archives'? undef: {};
+	}
+
+	return $self;
 }
 
 # [
@@ -340,10 +345,14 @@ B<my_id>.
 
 =over 4
 
-=item B<clear_cache>
+=item B<clear_cache> [key ..]
 
-For performance reasons, most method results are cached. Use this
-method to explicitly request this cache to be cleared.
+For performance reasons, most method results are cached (memoized in fact).
+Use this method to explicitly request this cache to be cleared.
+
+By default all cached keys are cleared; I<key> may be one of the strings
+'archives', 'categories', 'branches', 'versions', 'revisions' or
+'revision_descs'.
 
 =item B<get_tree> [I<revision> [I<dir>]]
 

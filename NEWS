@@ -1,4 +1,13 @@
-arch-perl-0.3.2 (31-Dec-2004)
+arch-perl-0.4.1 (19-Jan-2005)
+
+* Improved Arch::Storage documentation.
+* Added "make debian" to bring debian/ subdirectory for those who need it.
+* Fixed some regexps in Arch::Name.
+* Fixed the file/dir history cut when a parent directory was renamed.
+* Several other fixes for changes and history.
+* Enhanced clear_cache method in Arch::Session and Arch::Tree.
+
+arch-perl-0.4.0 (31-Dec-2004)
 
 * Enhanced and documented Arch::TempFiles, tests added.
 * Highly enhanced Arch::Tree.

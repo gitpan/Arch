@@ -96,13 +96,28 @@ sub is_changed ($$$;$) {
 	my $is_dir = shift;
 
 	my $changed = {};
-	foreach my $change ($self->get) {
-		my $filepaths = $change->{arguments};
-		if ($filepaths->[0 - $to] eq $filepath
+	foreach my $change (reverse $self->get) {
+		my $dst_filepath = $change->{arguments}->[$to - 1];
+		my $src_filepath = $change->{arguments}->[0 - $to];
+
+		# support larch "features"
+		$dst_filepath =~ s!^\./!!;
+		$src_filepath =~ s!^\./!!;
+
+		# flag the file change if matching
+		if ($src_filepath eq $filepath
 			&& (!defined $is_dir || $change->{is_dir} == $is_dir)
 		) {
 			$changed->{$change->{type}} =
-				$change->{type} ne RENAME? 1: $filepaths->[$to - 1];
+				$change->{type} ne RENAME? 1: $dst_filepath;
+		}
+
+		# handle renames of parent directories (the most close change)
+		if ($change->{type} eq RENAME && $change->{is_dir}
+			&& $filepath =~ m!^\Q$src_filepath\E(/.+)$!
+			&& !exists $changed->{RENAME()}
+		) {
+			$changed->{$change->{type}} = "$dst_filepath$1";
 		}
 	}
 	$changed = undef unless %$changed;
@@ -135,8 +150,13 @@ sub type_string ($$) {
 	my $class = shift;
 	my $change = shift;
 
-	return $change->{type} .
-		($change->{is_dir} ? '/' : $TYPE_EXT{$change->{type}});
+	if ($change->{is_dir}) {
+		return $change->{type} eq RENAME
+			? '/>'
+			: $change->{type} . '/';
+	} else {
+		return $change->{type} . $TYPE_EXT{$change->{type}};
+	}
 }
 
 sub to_string ($$) {

@@ -19,13 +19,13 @@ use strict;
 
 package Arch::Name;
 
-my @ELEMENTS = qw(archive category branch version revision);
-my $i = 0;
-my %ELEMENT_INDEX = map { $_ => $i++, substr($_, 0, 1) => $i } @ELEMENTS;
+my @ELEMENTS = qw(none archive category branch version revision);
+my $i = -1;
+my %ELEMENT_INDEX = map { $_ => $i, substr($_, 0, 1) => ++$i } @ELEMENTS;
 my $ERROR = undef;  # yes, it is intentionally global
 
 my $archive_re  = qr/[-\w]+(?:\.[-\w]+)*@[-\w.]*/;
-my $category_re = qr/[a-zA-Z_](?:[\w]|-[\w])*/;
+my $category_re = qr/[a-zA-Z](?:[\w]|-[\w])*/;
 my $branch_re   = $category_re;
 my $version_re  = qr/\d+(?:\.\d+)*/;
 my $revision_re = qr/base-0|(?:version|patch|versionfix)-\d+/;
@@ -59,12 +59,12 @@ sub set ($$) {
 		# do nothing
 	} elsif (!ref($param)) {
 		# parse string
-		if ($param =~ m!($archive_re)(?:/($category_re)(?:(?:--($branch_re|))?(?:--($version_re|FIRST|LATEST)(?:--($revision_re|FIRST|LATEST))?)?)?)?$!o) {
+		if ($param =~ m!^($archive_re)(?:/($category_re)(?:(?:--($branch_re|))?(?:--($version_re|FIRST|LATEST)(?:--($revision_re|FIRST|LATEST))?)?)?)?$!o) {
 			@$self = ($1, $2, $3, $4, $5);
 			splice(@$self, @$self - 1) until defined $self->[-1];
 			# handle branchless names
-			$self->[$ELEMENT_INDEX{branch}] ||= ""
-				if defined $self->[$ELEMENT_INDEX{version}];
+			$self->[$ELEMENT_INDEX{branch} - 1] ||= ""
+				if defined $self->[$ELEMENT_INDEX{version} - 1];
 		} else {
 			$ERROR = "Can't parse name ($param)";
 		}
@@ -103,11 +103,11 @@ sub apply ($;@) {
 			$version_re,
 			$revision_re,
 		) {
-			my $elem = $ELEMENTS[$i];
+			my $elem = $ELEMENTS[$i + 1];
 			next unless exists $items{$elem};
 			my $item = $items{$elem};
 			if (defined $item && $i > @$self) {
-				$ERROR = "apply: can't change $elem without $ELEMENTS[$i-1]";
+				$ERROR = "apply: can't change $elem without $ELEMENTS[$i]";
 				last;
 			}
 			if (!defined $item) {
@@ -131,7 +131,7 @@ sub apply ($;@) {
 			my $level = @$self;
 			$ERROR = "apply: excess of items (@$items), some but $level are ignored"
 				if @$items > $level;
-			$hash{$ELEMENTS[--$level] || 'none'} = $_ foreach @$items;
+			$hash{$ELEMENTS[$level--] || 'none'} = $_ foreach @$items;
 			shift;
 		}
 		my @items = @_;
@@ -141,8 +141,8 @@ sub apply ($;@) {
 		}
 		my $level = @$self;
 		$ERROR = "apply: excess of items (@items) for level $level, some are ignored"
-			if @items > @ELEMENTS - $level;
-		$hash{$ELEMENTS[$level++] || 'none'} = $_ foreach @items;
+			if @items >= @ELEMENTS - $level;
+		$hash{$ELEMENTS[++$level] || 'none'} = $_ foreach @items;
 		delete $hash{none};
 		$self->apply(\%hash);
 	}
@@ -197,7 +197,7 @@ sub to_hash ($) {
 	my $self = shift;
 	my %hash = ();
 	for (my $i = 0; $i < @$self; $i++) {
-		$hash{$ELEMENTS[$i]} = $self->[$i];
+		$hash{$ELEMENTS[$i + 1]} = $self->[$i];
 	}
 	return wantarray? %hash: \%hash;
 }
@@ -245,19 +245,18 @@ sub level ($;$) {
 	my $self = shift;
 	my $stringify = shift;
 	return scalar @$self unless $stringify;
-	return $ELEMENTS[@$self - 1] || "none";
+	return $ELEMENTS[@$self];
 }
 
 sub cast ($$) {
 	my $self = shift;
 	my $elem = shift;
-	my $index = $elem =~ /^\d+$/? $elem - 1:
-		$elem eq 'none'? -1: $ELEMENT_INDEX{$elem};
-	die "No Arch::Name element given to cast to\n" unless defined $index;
-	return undef if $index >= @$self;
+	my $index1 = $elem =~ /^\d+$/? $elem: $ELEMENT_INDEX{$elem};
+	die "cast: invalid arg given ($elem)\n" unless defined $index1;
+	return undef if $index1 > @$self;
 
 	my $clone = $self->new(undef, -1);
-	@$clone = (@$self)[0 .. $index];
+	@$clone = (@$self)[0 .. $index1 - 1];
 	return $clone;
 }
 
@@ -265,12 +264,12 @@ sub is_valid ($;$$) {
 	my $this = shift;
 	my $self = ref($this)? $this: $this->new(shift);
 	my $elem = shift;
-	return @$self > 0 unless $elem;
+	return @$self > 0 unless defined $elem;
 	my $at_least = $elem =~ s/\+$//;
-	my $index = $ELEMENT_INDEX{$elem};
-	die "Invalid element name ($elem)\n" unless defined $index;
-	return $index <= @$self - 1 if $at_least;
-	return $index == @$self - 1;
+	my $index1 = $elem =~ /^\d+$/? $elem: $ELEMENT_INDEX{$elem};
+	die "is_valid: invalid arg given ($elem)\n" unless defined $index1;
+	return $index1 <= @$self if $at_least;
+	return $index1 == @$self;
 }
 
 use overload

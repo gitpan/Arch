@@ -133,9 +133,13 @@ sub expanded_revisions ($) {
 				foreach my $version_info (@$version_infos) {
 					my ($version, @revisions) = @$version_info;
 					foreach my $revision (@revisions) {
-						push @$all_revisions, Arch::Name->new(
-							[ $archive, $category, $branch, $version, $revision ]
-						);
+						my $name = Arch::Name->new([
+							$archive, $category, $branch, $version, $revision,
+						]);
+						die $name->error .
+							"\n\t($archive, $category, $branch, $version, $revision)\n"
+							if $name->error;
+						push @$all_revisions, $name;
 					}
 				}
 			}
@@ -157,12 +161,14 @@ Arch::Storage - abstract class to access arch archives
 
     use base 'Arch::Storage';
 
-    # implement pure virtual methods:
-    #   archives, branches, versions, revisions, expanded_archive_info
+    # see synopsis of concrete classes
 
 =head1 DESCRIPTION
 
 Arch::Storage provides some common methods to query content of arch archive.
+
+The methods usually return arrayref if not otherwise specified, and
+are not affected by the list context (except for working_names).
 
 =head1 METHODS
 
@@ -190,41 +196,53 @@ B<get_log>.
 
 =over 4
 
-=item B<new> [I<args>]
+=item B<new> [I<%args>]
 
-Create a new subclass (i.e. L<Arch::Session> or L<Arch::Library>) instanse.
+Create a new instanse of the concrete subclass (i.e. L<Arch::Session> or
+L<Arch::Library>).
 
-=item B<init>
+=item B<init> I<%args>
 
+Initialize or reset the specified object state.
 
+=item B<working_name> [I<name>]
 
-=item B<working_name> I<name>
+Set or get the default working operand for other methods.
 
+The argument may be anything that L<Arch::Name> constructor accepts,
+i.e. fully qualified string, arrayref, hashref or Arch::Name instanse.
+If needed, I<name> is converted to L<Arch::Name> instanse, and this is
+what is returned. Note that this object behaves as fully qualified name
+in string context.
 
+=item B<working_names> [I<archive> ..]
 
-=item B<working_names> I<subnames> ..
+Similar to B<working_name>, but accepts and returns a list of name
+components, from I<archive> to I<revision>.
 
-
+This method is provided for convenience and backward compatibility only.
+You may as well use B<working_name> instead, just enclose the argument list
+into arrayref, and call B<to_array> on the returned object.
 
 =item B<fixup_name_alias>
 
-
-
-To be documented.
+Replace (if needed) the "FIRST" and "LATEST" components of the working name's
+I<version> and I<revision> with the actual values by querying the storage.
 
 =item B<is_archive_managed> [I<archive>]
 
-The argument may be anything L<Arch::Name> constructor accepts (i.e. fully
-qualified string, arrayref, hashref or Arch::Name instanse). If no
-argument is specified, the B<working_name> default is used.
+Return true or false depending on whether the archive is known to the
+storage.
+
+If given, the argument is used instead of the default B<working_name>.
 
 =item B<expanded_revisions>
 
-Currently works on B<working_name> only (will be enhanced).
+Return all revisions in all archives, each revision is Arch::Name object.
 
 =item B<archives>
 
-Returns a list of registered archives.
+Return all registered (or otherwise known) archives.
 
 =item B<categories> [I<archive>]
 
@@ -234,17 +252,16 @@ Returns a list of registered archives.
 
 =item B<revisions>  [I<version>]
 
-Returns a list of categories, branches, versions or revisions
-respectively.
+Return all categories, branches, versions or revisions respectively
+in the immediate parent, similarly to the corresponding I<tla> commands.
 
-The argument may be anything L<Arch::Name> constructor accepts (i.e. fully
-qualified string, arrayref, hashref or Arch::Name instanse). If no
-argument is specified, the B<working_name> default is used.
+If given, the argument is used instead of the default B<working_name>.
 
 =item B<get_revision_descs> [I<version>]
 
-Returns describing hash for every revision in the specified version,
-which defaults to B<working_names> if omitted.
+Return describing hash for every revision in the version.
+
+If given, the argument is used instead of the default B<working_name>.
 
 The revision hashes have the following fields:
 
@@ -252,7 +269,7 @@ The revision hashes have the following fields:
 
 =item B<name>
 
-The revision name (i.e. C<base-0>, C<patch-X>, C<version-X> or C<versionfix-X>)
+The revision name (i.e. C<base-0>, C<patch-X>, C<version-0> or C<versionfix-X>)
 
 =item B<summary>
 

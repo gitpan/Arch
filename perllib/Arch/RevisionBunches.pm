@@ -126,7 +126,7 @@ sub _set_bunch_interval_data ($$;$) {
 	$bunch->{date} .= " days ago";
 	$bunch->{summary} = "$nr revision" . ($nr == 1? "": "s");
 	$bunch->{summary} .= ' (missing)' if $bunch->{is_missing} && $nm < $nr;
-	$bunch->{summary} .= ' ($nm merged)' if $nm > 0;
+	$bunch->{summary} .= " ($nm merged)" if $nm > 0;
 
 	$self->{cb_add_new_bunch}->($bunch, $start_index) if $self->{cb_add_new_bunch};
 }
