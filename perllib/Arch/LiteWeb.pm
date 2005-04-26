@@ -65,7 +65,7 @@ sub get ($$%) {
 	}
 
 	my $use_proxy = $args{use_proxy};
-	my $proxy_host = $args{proxy_host};
+	my $proxy_host = $args{proxy_host} || "";
 	my $proxy_port = $args{proxy_port} || 80;
 	if ($use_proxy && !$proxy_host && defined $ENV{http_proxy}) {
 		($proxy_host, $proxy_port) = _parse_url($ENV{http_proxy})
@@ -251,7 +251,9 @@ B<response_content>.
 
 =item B<get> I<url> [I<params> ...]
 
-Execute HTTP get of the given I<url> and return 
+Execute HTTP get of the given I<url> and return the html string or undef
+on network/response error. Use other methods to get the details about
+the error and the response.
 
 I<params> is key-value hash, the following keys are supported:
 

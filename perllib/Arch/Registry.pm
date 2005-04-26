@@ -1,4 +1,4 @@
-# Arch Perl library, Copyright (C) 2004 Mikhael Goikhman
+# Arch Perl library, Copyright (C) 2004-2005 Mikhael Goikhman
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -20,6 +20,7 @@ use strict;
 package Arch::Registry;
 
 use Arch::Util qw(run_tla run_cmd save_file load_file);
+use Arch::Backend qw(has_register_archive_name_arg);
 use Arch::LiteWeb;
 use Arch::TempFiles;
 
@@ -40,7 +41,9 @@ sub register_archive ($$;$) {
 	my $location = shift;
 	my $archive = shift;
 
-	my @args = ('register-archive --force', ($archive? $archive: ()), $location);
+	my @name_arg = $archive && has_register_archive_name_arg()?
+		$archive: ();
+	my @args = ('register-archive --force', @name_arg, $location);
 	run_tla(@args);
 	return $? == 0;
 }

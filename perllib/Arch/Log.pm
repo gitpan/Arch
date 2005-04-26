@@ -20,7 +20,7 @@ use strict;
 package Arch::Log;
 
 use Arch::Changes qw(:type);
-use Arch::Util qw(standardize_date parse_creator_email);
+use Arch::Util qw(standardize_date parse_creator_email date2age);
 
 sub new ($$%) {
 	my $class = shift;
@@ -126,12 +126,12 @@ sub get_changes ($) {
 
 	# removed dirs
 	foreach my $path (@{$self->header('removed_directories') || []}) {
-		$changes->add(REMOVE, 1, $path);
+		$changes->add(DELETE, 1, $path);
 	}
 
 	# removed files
 	foreach my $path (@{$self->header('removed_files') || []}) {
-		$changes->add(REMOVE, 0, $path);
+		$changes->add(DELETE, 0, $path);
 	}
 
 	# modified dirs
@@ -159,6 +159,26 @@ sub get_changes ($) {
 	return $changes;
 }
 
+sub split_version ($) {
+	my $self = shift;
+
+	my $full_revision = $self->get_revision;
+	die "Invalid archive/revision ($full_revision) in log:\n$self->{message}"
+		unless $full_revision =~ /^(.+)--(.+)/;
+
+	return ($1, $2);
+}
+
+sub get_version ($) {
+	my $self = shift;
+	($self->split_version)[0];
+}
+
+sub get_revision ($) {
+	my $self = shift;
+	$self->header('archive') . "/" . $self->header('revision');
+}
+
 sub get_revision_kind ($) {
 	my $self = shift;
 
@@ -169,24 +189,23 @@ sub get_revision_kind ($) {
 sub get_revision_desc ($) {
 	my $self = shift;
 
-	my $full_revision = $self->header('archive') . "/" . $self->header('revision');
-	die "Invalid archive/version ($full_revision) in log:\n$self->{message}"
-		unless $full_revision =~ /^(.+)--(.+)/;
-
-	my ($version, $name) = ($1, $2);
+	my ($version, $name) = $self->split_version;
 	my $summary = $self->header('summary') || '(none)';
-	my ($creator_name, $creator_email) = parse_creator_email($self->header('creator') || "N.O.Body");
+	my ($creator, $email, $username) = parse_creator_email($self->header('creator') || "N.O.Body");
 	my $date = $self->header('standard_date') || standardize_date($self->header('date') || "no-date");
+	my $age = date2age($date);
 	my $kind = $self->get_revision_kind;
 
 	return {
-		name    => $name,
-		version => $version,
-		summary => $summary,
-		creator => $creator_name,
-		email   => $creator_email,
-		date    => $date,
-		kind    => $kind,
+		name     => $name,
+		version  => $version,
+		summary  => $summary,
+		creator  => $creator,
+		email    => $email,
+		username => $username,
+		date     => $date,
+		age      => $age,
+		kind     => $kind,
 	};
 }
 
@@ -246,6 +265,9 @@ B<get_message>,
 B<get_headers>,
 B<header>,
 B<get_changes>,
+B<split_version>,
+B<get_version>,
+B<get_revision>,
 B<get_revision_kind>,
 B<get_revision_desc>,
 B<dump>.
@@ -283,6 +305,19 @@ B<ATTENTION!> Patch logs do not distinguish metadata (ie permission)
 changes from ordinary content changes. Permission changes will be
 represented with a change type of 'M'. This is different from
 L<Arch::Changeset>::B<get_changes> and L<Arch::Tree>::B<get_changes>.
+
+=item B<split_version>
+
+Return a list of 2 strings: full version and patch-level.
+
+=item B<get_version>
+
+Return the full version name, not unlike B<split_version>.
+
+=item B<get_revision>
+
+Return the full revision name.  This is currently a concatination of
+headers Archive and Revision with '/' separator.
 
 =item B<get_revision_kind>
 

@@ -21,11 +21,20 @@ package Arch::Session;
 
 use base 'Arch::Storage';
 
-use Arch::Util qw(run_tla _parse_revision_descs);
-use Arch::TempFiles qw(temp_dir_name);
+use Arch::Util qw(run_tla _parse_revision_descs save_file);
+use Arch::TempFiles qw(temp_dir_name temp_dir);
 use Arch::Changeset;
+use Arch::Library;
 use Arch::Log;
 use Arch::Tree;
+
+sub _default_fields ($) {
+	my $this = shift;
+	return (
+		$this->SUPER::_default_fields,
+		use_library => 1,
+	);
+}
 
 sub new ($%) {
 	my $class = shift;
@@ -87,9 +96,11 @@ sub revisions ($;$) {
 	return $self->{revisions}->{$version};
 }
 
-sub get_revision_descs ($;$) {
+sub get_revision_descs ($;$$) {
 	my $self = shift;
 	my $version = $self->_name_operand(shift, 'version');
+	my $extra_args = shift || [];
+	die "get_revision_descs: no a|c|b|v ($version)\n" unless $version->is_valid('archive+');
 
 	unless ($self->{revision_descs}->{$version}) {
 		my $nonarch_version = $version->nan;
@@ -106,7 +117,7 @@ sub get_revision_descs ($;$) {
 				$prev_line = $_;
 				($end || /^        /) && $ok
 			}
-			run_tla("abrowse --desc", $version);
+			run_tla("abrowse --desc", @$extra_args, $version);
 
 		my $revision_descs = _parse_revision_descs(2, \@revision_lines);
 		$self->{revision_descs}->{$version} = $revision_descs;
@@ -131,6 +142,24 @@ sub clear_cache ($;@) {
 	}
 
 	return $self;
+}
+
+sub expanded_versions ($;$$) {
+	my $self = shift;
+	my $archive = $self->_name_operand(shift);
+	my $extra_args = shift || [];
+	die "get_all_versions: no archive+ ($archive)\n" unless $archive->is_valid('archive+');
+	my $archive0 = $archive->cast('archive');
+
+	unless ($self->{all_versions}->{$archive}) {
+		my @versions =
+			map { s/^      //; "$archive0/$_" }
+			grep { /^      [^ ]/ }
+			run_tla("abrowse --desc", @$extra_args, $archive);
+
+		$self->{all_versions}->{$archive} = \@versions;
+	}
+	return $self->{all_versions}->{$archive};
 }
 
 # [
@@ -215,10 +244,22 @@ sub expanded_archive_info ($;$$) {
 sub get_revision_changeset ($$;$) {
 	my $self = shift;
 	my $revision = shift;
-	my $dir = defined $_[0]? shift: temp_dir_name("arch-changeset");
+	my $dir = shift;
+
+	if (!$dir && $self->{use_library}) {
+		$dir = Arch::Library->instance->find_revision_tree($revision);
+		if ($dir) {
+			$dir .= "/,,patch-set";
+			goto RETURN_CHANGESET;
+		}
+	}
+
+	$dir ||= temp_dir_name("arch-changeset");
 	die "get_changeset: incorrect dir ($dir)\n" unless $dir && !-d $dir;
 
 	run_tla("get-changeset", $revision, $dir);
+
+	RETURN_CHANGESET:
 	return Arch::Changeset->new($revision, $dir);
 }
 
@@ -228,6 +269,85 @@ sub get_changeset ($;$) {
 	my $revision = $self->working_name;
 	die "get_changeset: no working revision\n" unless $revision->is_valid('revision');
 	return $self->get_revision_changeset($revision, $dir);
+}
+
+sub get_specified_changeset ($$) {
+	my $self = shift;
+	my $arg = shift;
+
+	die "No changeset specifier (revision name or directory)\n"
+		unless $arg;
+
+	my $downloaded_file = undef;
+	my $temp_dir = undef;
+
+	if ($arg =~ m!^http://!) {
+		die "Invalid http:// tarball url ($arg)\n"
+			unless $arg =~ m!/([^/]+\.tar\.gz)$!;
+		my $filename = $1;
+
+		require Arch::LiteWeb;
+		my $web = Arch::LiteWeb->new;
+		my $content = $web->get($arg);
+		die $web->error_with_url unless defined $content;
+		die "Zero content in $arg\n" unless $content;
+
+		$temp_dir = temp_dir("arch-download");
+		$arg = "$temp_dir/$filename";
+		save_file($arg, \$content);
+		$downloaded_file = $arg;
+	}
+
+	if ($arg =~ m!([^/]+)\.tar\.gz$!) {
+		die "No tarball file $arg found\n"
+			unless -f $arg;
+		my $basename = $1;
+
+		require Arch::Tarball;
+		my $tarball = Arch::Tarball->new(file => $arg);
+		my $final_dir = $tarball->extract(dir => $temp_dir) . "/$basename";
+
+		# base-0.src.tar.gz tarball extracts to dir without .src part,
+		# but this tree has no tree-version set anyway (and zero changes)
+		die "No way to get tree changes from what seems to be an arch import tarball\n  File: $arg\n"
+			if $final_dir =~ /.*--.*--.*\d+\.src$/ && !-d $final_dir;
+		die "No expected $final_dir after extracting $arg\n"
+			unless -d $final_dir;
+
+		$arg = $final_dir;
+		unlink $downloaded_file if $downloaded_file;
+	}
+
+	if (-d "$arg/{arch}") {
+		my $tree = Arch::Tree->new($arg);
+		my $cset = $tree->get_changeset(temp_dir_name("arch-changeset"));
+
+		die qq(Could not get local tree changes\n)
+			. qq(  You may be using "untagged-source unrecognized" and have untagged source\n)
+			. qq(  files in your tree. Please add file ids or remove the offending files.\n)
+			unless defined $cset;
+		return $cset;
+
+	} elsif (-f "$arg/mod-dirs-index") {
+		return Arch::Changeset->new('none', $arg);
+
+	} elsif (-d $arg) {
+		die qq(Invalid directory\n)
+			. qq(  "$arg" is neither a changeset directory nor a project tree.\n);
+
+	} else {
+#		die "No fully qualified revision name ($arg)\n"
+#			unless Arch::Name->is_valid($arg, "revision");
+		my $cset = eval {
+			$self->get_revision_changeset(
+				$arg, temp_dir_name("arch-changeset")
+			);
+		};
+		die qq(get-changeset failed\n)
+			. qq(    Could not fetch changeset for revision "$arg".\n)
+			if $@;
+		return $cset;
+	}
 }
 
 sub get_revision_log ($$) {
@@ -347,6 +467,7 @@ B<get_log>.
 
 Additionally, the following methods are available:
 
+B<get_specified_changeset>,
 B<clear_cache>,
 B<get_tree>,
 B<init_tree>,
@@ -354,7 +475,14 @@ B<my_id>.
 
 =over 4
 
-=item B<clear_cache> [key ..]
+=item B<get_specified_changeset> I<arg>
+
+Get changeset object (Arch::Changeset) by a user specified input. I<arg>
+may be revision name, or changeset directory, or tree directory (then
+changeset for tree changes is constructed), and in the future local tarball
+filepath or remote tarball url.
+
+=item B<clear_cache> [I<key> ..]
 
 For performance reasons, most method results are cached (memoized in fact).
 Use this method to explicitly request this cache to be cleared.

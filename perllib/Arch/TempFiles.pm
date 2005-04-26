@@ -22,7 +22,9 @@ package Arch::TempFiles;
 use Exporter;
 use vars qw($global_tmp @ISA @EXPORT_OK);
 @ISA = qw(Exporter);
-@EXPORT_OK = qw(temp_root temp_name temp_file_name temp_dir_name);
+@EXPORT_OK = qw(
+	temp_root temp_name temp_file_name temp_dir_name temp_file temp_dir
+);
 
 use Arch::Util qw(remove_dir);
 

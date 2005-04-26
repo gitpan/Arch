@@ -24,17 +24,18 @@ BEGIN { *Arch::Changes::import = *Exporter::import; }
 use vars qw(@EXPORT_OK %EXPORT_TAGS);
 
 @EXPORT_OK = qw(
-	ADD REMOVE MODIFY META_MODIFY RENAME 
+	ADD DELETE REMOVE MODIFY META_MODIFY RENAME 
 );
 %EXPORT_TAGS = (
-	type => [ qw(ADD REMOVE MODIFY META_MODIFY RENAME) ],
+	type => [ qw(ADD DELETE REMOVE MODIFY META_MODIFY RENAME) ],
 );
 
 
 use Arch::Util qw(run_tla);
 
 use constant ADD         => 'A';
-use constant REMOVE      => 'D';
+use constant DELETE      => 'D';
+use constant REMOVE      => 'D';  # obsolete, may be removed after summer 2005
 use constant MODIFY      => 'M';
 use constant META_MODIFY => '-';
 use constant RENAME      => '=';
@@ -140,7 +141,7 @@ sub dump ($) {
 
 my %TYPE_EXT = (
 	ADD()         => ' ',
-	REMOVE()      => ' ',
+	DELETE()      => ' ',
 	MODIFY()      => ' ',
 	META_MODIFY() => '-',
 	RENAME()      => '>',
@@ -199,7 +200,7 @@ following fields:
 
 =item B<type>
 
-The type of the change. Can be one of B<ADD>, B<REMOVE>, B<MODIFY>,
+The type of the change. Can be one of B<ADD>, B<DELETE>, B<MODIFY>,
 B<META_MODIFY> or B<RENAME>.
 
 =item B<is_dir>
@@ -265,21 +266,21 @@ Generates a textual changes listing as produced by C<tla changes>.
 
 Verify whether the given I<filepath> is modified by the changes. The I<to>
 parameter may get boolean values "0", "1", "from" or "to", it only affects
-B<RENAME> changes, and in some sense B<ADD> and B<REMOVE> changes. If I<to>
+B<RENAME> changes, and in some sense B<ADD> and B<DELETE> changes. If I<to>
 is set, then the given I<filepath> is taken as the destination of B<RENAME>
-or B<ADD>, otherwise as the source of B<RENAME> or B<REMOVE>. The B<MODIFY>
+or B<ADD>, otherwise as the source of B<RENAME> or B<DELETE>. The B<MODIFY>
 and B<META_MODIFY> changes are not affected, since the destination and the
 source is the same file/dir.
 
 If I<filepath> is not modified by any changes, return undef.
 
-Otherwise, return hash with possible keys B<ADD>, B<REMOVE>, B<MODIFY>,
+Otherwise, return hash with possible keys B<ADD>, B<DELETE>, B<MODIFY>,
 B<META_MODIFY> and B<RENAME>. The hash values are 1 in all cases except for
 B<RENAME>, then the value is the file name on the opposite side (i.e.,
 the source of B<RENAME> if I<to> is true, and the destination if false).
 
 Note, the valid return values for arch are: undef, hashref with one key
-(B<ADD> or B<REMOVE>) or hashref with combination of one-to-three
+(B<ADD> or B<DELETE>) or hashref with combination of one-to-three
 keys (B<MODIFY>, B<META_MODIFY> and B<RENAME>).
 
 =item B<dump>

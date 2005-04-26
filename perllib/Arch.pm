@@ -21,7 +21,7 @@ package Arch;
 
 use vars qw($VERSION);
 
-$VERSION = '0.4.2';
+$VERSION = '0.5.0';
 $VERSION = eval $VERSION;
 
 1;
@@ -34,7 +34,7 @@ Arch - GNU Arch Perl library
 
 =head1 SYNOPSIS 
 
-    use Arch 0.4.2;
+    use Arch 0.5.0;
 
     # perldoc Arch
     # axp man Arch
@@ -69,8 +69,11 @@ Enno Cramer (uebergeek@web.de--2003/arch-perl--devel).
 =head1 SEE ALSO
 
 For more information, see L<tla>,
+L<Arch::Backend>,
 L<Arch::Changes>,
 L<Arch::Changeset>,
+L<Arch::DiffParser>,
+L<Arch::FileHighlighter>,
 L<Arch::Inventory>,
 L<Arch::Library>,
 L<Arch::LiteWeb>,
@@ -78,6 +81,7 @@ L<Arch::Log>,
 L<Arch::Name>,
 L<Arch::Registry>,
 L<Arch::RevisionBunches>,
+L<Arch::Run>,
 L<Arch::RunLimit>,
 L<Arch::Session>,
 L<Arch::SharedCache>,
@@ -85,6 +89,10 @@ L<Arch::SharedIndex>,
 L<Arch::Storage>,
 L<Arch::Tarball>,
 L<Arch::TempFiles>,
+L<Arch::Test::Archive>,
+L<Arch::Test::Cases>,
+L<Arch::Test::Framework>,
+L<Arch::Test::Tree>.
 L<Arch::Tree>,
 L<Arch::Util>.
 

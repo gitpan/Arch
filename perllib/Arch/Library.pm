@@ -21,7 +21,7 @@ package Arch::Library;
 
 use base 'Arch::Storage';
 
-use Arch::Util qw(run_tla load_file standardize_date parse_creator_email);
+use Arch::Util qw(run_tla load_file standardize_date parse_creator_email date2age);
 use Arch::Changeset;
 use Arch::Log;
 
@@ -85,15 +85,18 @@ sub get_revision_descs ($;$) {
 		$summary =~ s/^    |^\t//mg;
 
 		$date = standardize_date($date);
-		my ($creator_name, $creator_email) = parse_creator_email($creator);
+		my $age = date2age($date);
+		my ($creator1, $email, $username) = parse_creator_email($creator);
 
 		push @revision_descs, {
-			name    => $name,
-			summary => $summary,
-			creator => $creator_name,
-			email   => $creator_email,
-			date    => $date,
-			kind    => 'lib',
+			name     => $name,
+			summary  => $summary,
+			creator  => $creator1,
+			email    => $email,
+			username => $username,
+			date     => $date,
+			age      => $age,
+			kind     => 'lib',
 		};
 	}
 	return \@revision_descs;

@@ -1,4 +1,4 @@
-# Arch Perl library, Copyright (C) 2004 Mikhael Goikhman
+# Arch Perl library, Copyright (C) 2004-2005 Mikhael Goikhman
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -19,31 +19,20 @@ use strict;
 
 package Arch::Util;
 
+# import 2 functions for backward compatibility only; remove after summer 2005
+use Arch::Backend qw(arch_backend is_baz);
+
 use Exporter;
-use vars qw(@ISA @EXPORT_OK $ARCH_BACKEND);
+use vars qw(@ISA @EXPORT_OK);
 @ISA = qw(Exporter);
 @EXPORT_OK = qw(
 	arch_backend is_baz
 	run_pipe_from run_cmd run_tla
 	load_file save_file
 	copy_dir remove_dir setup_config_dir
-	standardize_date date2daysago parse_creator_email adjacent_revision
-	_parse_revision_descs
+	standardize_date date2daysago date2age
+	parse_creator_email adjacent_revision _parse_revision_descs
 );
-
-sub arch_backend (;$) {
-	$ARCH_BACKEND = shift if @_;
-	$ARCH_BACKEND ||= $ENV{TLA} || $ENV{ARCH_BACKEND} || "tla";
-	return $ARCH_BACKEND;
-}
-
-sub is_baz () {
-	return scalar(($ARCH_BACKEND || "") =~ m!(^|/)baz[^/]*$!);
-}
-
-BEGIN {
-	arch_backend(undef);
-}
 
 sub run_pipe_from (@) {
 	my $arg0 = shift || die;
@@ -71,12 +60,12 @@ sub run_cmd (@) {
 	my @lines = <$pipe>;
 	close($pipe);
 	chomp @lines if wantarray;
-	return wantarray? @lines: $lines[0];
+	return wantarray? @lines: $lines[0] || "";
 }
 
 sub run_tla (@) {
 	my $arg1 = shift || die;
-	unshift @_, $ARCH_BACKEND, split(' ', $arg1);
+	unshift @_, $Arch::Backend::EXE, split(' ', $arg1);
 	goto \&run_cmd;
 }
 
@@ -90,9 +79,11 @@ sub load_file ($;$) {
 	my $content = <FILE>;
 	close(FILE) or die "Can't close $file_name in load: $!\n";
 	if ($content_ref) {
-		$content_ref = \$content if ref($content_ref) eq 'SCALAR';
-		@$content_ref = map { chomp; $_ } split(/\r?\n/, $content)
-			if ref($content_ref) eq 'ARRAY';
+		$$content_ref = $content if ref($content_ref) eq 'SCALAR';
+		if (ref($content_ref) eq 'ARRAY') {
+			$content =~ s/\r?\n$//;
+			@$content_ref = map { chomp; $_ } split(/\r?\n/, $content, -1);
+		}
 	}
 	return defined wantarray? $content: undef;
 }
@@ -118,8 +109,9 @@ sub copy_dir ($$) {
 }
 
 sub remove_dir (@) {
-	return unless @_;
-	my $out = run_cmd("/bin/rm -rf", @_);
+	my @dirs = grep { $_ } @_;
+	return unless @dirs;
+	my $out = run_cmd("/bin/rm -rf", @dirs);
 	warn $out if $out;
 }
 
@@ -156,14 +148,15 @@ sub standardize_date ($) {
 	return $date;
 }
 
-# return (creator_name, creator_email)
+# return (creator_name, creator_email, creator_username)
 sub parse_creator_email ($) {
 	my $creator = shift;
 	my $email = 'no@email.defined';
-	if ($creator =~ /^(.*?)\s*<(.*)>$/) {
-		($creator, $email) = ($1, $2);
+	my $username = "_none_";
+	if ($creator =~ /^(.*?)\s*<((?:(.+?)@)?.*)>$/) {
+		($creator, $email, $username) = ($1, $2, $3);
 	}
-	return ($creator, $email);
+	return ($creator, $email, $username);
 }
 
 sub adjacent_revision ($$) {
@@ -185,7 +178,7 @@ sub adjacent_revision ($$) {
 sub date2daysago ($) {
 	my $date_str = shift;
 
-	return -999 unless $date_str =~ /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2}) ([^\s]+)/;
+	return -10000 unless $date_str =~ /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2}) ([^\s]+)/;
 
 	# timezone is not taken in account...
 	require Time::Local;
@@ -194,6 +187,20 @@ sub date2daysago ($) {
 
 	return $daysago unless wantarray;
 	return ($daysago, $time, $7);
+}
+
+sub date2age ($) {
+	my $daysago = date2daysago($_[0]);
+	return "bad-date" if $daysago <= -10000;
+
+	my ($sign, $days) = $daysago =~ /^(-?)(.*)$/;
+	my $str =
+		$days ==   1? "1 day":
+		$days <=  33? "$days days":
+		$days <=  59? int($days / 7 + 0.5) . " weeks":
+		$days <= 550? int($days / 30.42 + 0.5) . " months":
+		int($days / 365.25 + 0.5) . " years";
+	return "$sign$str";
 }
 
 # gets tla lines with undef meaning the delimiter for revisions;
@@ -220,18 +227,21 @@ sub _parse_revision_descs ($$) {
 		my ($date, $creator) = $line2 =~ /^(.+?)\s{6}(.*)/
 			or die "Unexpected output of tla, subline 2:\n\t$line2\n";
 		$date = standardize_date($date);
+		my $age = date2age($date);
 
 		my @version_part;
 		push @version_part, 'version', $1 if $name =~ s/^(.*)--(.*)/$2/;
 
-		my ($creator_name, $creator_email) = parse_creator_email($creator);
+		my ($creator1, $email, $username) = parse_creator_email($creator);
 		push @revision_descs, {
-			name    => $name,
-			summary => $summary,
-			creator => $creator_name,
-			email   => $creator_email,
-			date    => $date,
-			kind    => $kind,
+			name     => $name,
+			summary  => $summary,
+			creator  => $creator1,
+			email    => $email,
+			username => $username,
+			date     => $date,
+			age      => $age,
+			kind     => $kind,
 			@version_part,
 		};
 	}
@@ -280,6 +290,7 @@ B<remove_dir>,
 B<setup_config_dir>,
 B<standardize_date>,
 B<date2daysago>,
+B<date2age>,
 B<parse_creator_email>,
 B<adjacent_revision>.
 
@@ -363,6 +374,13 @@ If failed, the original string is returned.
 
 Convert a date string to time difference to now in full days.
 
+In list content, return (num_days_ago, unix_time, timezone_str).
+
+=item B<date2age> I<date_string>
+
+Like B<date2daysago>, but return a human readable string, like "5 days"
+or "-6 weeks" or "7 months" or "3 years".
+
 =item B<parse_creator_email> I<my_id>
 
 Try to parse the I<arch> B<my-id> of the patch creator. Return a list of
@@ -385,6 +403,6 @@ Mikhael Goikhman (migo@homemail.com--Perl-GPL/arch-perl--devel).
 
 =head1 SEE ALSO
 
-For more information, see L<tla>, L<Arch::Session>.
+For more information, see L<tla>, L<Arch>.
 
 =cut

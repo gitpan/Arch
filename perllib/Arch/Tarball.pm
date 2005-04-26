@@ -20,7 +20,7 @@ use strict;
 package Arch::Tarball;
 
 use Arch::Util qw(run_cmd run_pipe_from copy_dir);
-use Arch::TempFiles qw(temp_dir_name);
+use Arch::TempFiles qw(temp_dir);
 
 sub new ($%) {
 	my $class = shift;
@@ -52,8 +52,7 @@ sub create ($%) {
 		unless $do_pipe;
 
 	if ($needed_base_name && $needed_base_name ne $base_name) {
-		my $temp_dir = temp_dir_name("arch-tarball");
-		mkdir($temp_dir, 0777) or die "Can't mkdir $temp_dir: $!\n";
+		my $temp_dir = temp_dir("arch-tarball");
 		copy_dir("$dir/$base_name", "$temp_dir/$needed_base_name");
 		$base_name = $needed_base_name;
 		$dir = $temp_dir;
@@ -67,7 +66,16 @@ sub create ($%) {
 sub extract ($%) {
 	my $self = shift;
 	my %args = @_;
-	die "Not implemented yet";
+
+	my $file = $args{file} || $self->{file}
+		or die "Arch::Tarball::extract: No file given in constructor\n";
+	my $dir = $args{dir} || temp_dir("arch-tarball");
+	die "Arch::Tarball::extract: unexisting dir ($dir)\n"
+		if $args{dir} && !-d $dir;
+
+	run_cmd($self->{tar}, "xz", "-C", $dir, "-f", $file);
+
+	return $dir;
 }
 
 sub list ($%) {
@@ -162,9 +170,14 @@ B<create> method.
 
 B<Note:> Currently the B<pipe> option is mandatory.
 
-=item B<extract> I<%opts> (not implemented yet)
+=item B<extract> I<%opts>
 
-Extracts the tarball to a given target directory.
+Extracts the tarball to a given target directory, specified by B<dir> option.
+If B<dir> option is not given, a temporary directory is created that will
+hold the extracted dirs/files. This directory is returned.
+
+The B<file> option specifies the tarball file name. It may be given in the
+constructor instead.
 
 =item B<list> I<%opts> (not implemented yet)
 

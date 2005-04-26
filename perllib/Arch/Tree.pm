@@ -1,4 +1,4 @@
-# Arch Perl library, Copyright (C) 2004 Mikhael Goikhman
+# Arch Perl library, Copyright (C) 2004-2005 Mikhael Goikhman
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -19,7 +19,9 @@ use strict;
 
 package Arch::Tree;
 
-use Arch::Util qw(run_tla load_file _parse_revision_descs adjacent_revision is_baz);
+use Arch::Util qw(run_tla load_file _parse_revision_descs adjacent_revision);
+use Arch::Backend qw(has_file_diffs_cmd has_tree_version_dir_opt has_tree_id_cmd has_set_tree_version_cmd is_baz);
+use Arch::Session;
 use Arch::Name;
 use Arch::Log;
 use Arch::Inventory;
@@ -65,9 +67,17 @@ sub get_id_tagging_method ($) {
 sub get_version ($) {
 	my $self = shift;
 	return $self->{version} if $self->{version};
-	my @add_params = is_baz()? ("-d"): ();
+	my @add_params = has_tree_version_dir_opt()? ("-d"): ();
 	my ($version) = run_tla("tree-version", @add_params, $self->{dir});
 	return $self->{version} = $version;
+}
+
+sub get_revision ($) {
+	my $self = shift;
+	#return $self->{revision} if $self->{revision};
+	my $cmd = has_tree_id_cmd()? "tree-id": "logs -frd";
+	my ($revision) = run_tla($cmd, $self->{dir});
+	return $self->{revision} = $revision;
 }
 
 sub set_version ($$) {
@@ -75,7 +85,7 @@ sub set_version ($$) {
 	my $version = shift;
 
 	delete $self->{version};
-	my $cmd = is_baz()? "tree-version": "set-tree-version";
+	my $cmd = has_set_tree_version_cmd()? "set-tree-version": "tree-version";
 	run_tla($cmd, "-d", $self->{dir}, $version);
 
 	return $?;
@@ -159,12 +169,15 @@ sub get_inventory ($) {
 	return Arch::Inventory->new($self->root);
 }
 
-# TODO: properly support escaping
+# TODO: properly support file name escaping
 sub get_changes ($) {
 	my $self = shift;
 	my $is_baz = is_baz();
-	my @args = is_baz? ("status"): ("changes", "-d");
+	my @args = $is_baz ? qw(status) : qw(changes -d);
 	my @lines = run_tla(@args, $self->{dir});
+
+	return undef
+		if ($? >> 8) == 2;
 
 	my $baz_1_1_conversion_table;
 	$baz_1_1_conversion_table = {
@@ -191,7 +204,7 @@ sub get_changes ($) {
 			my $is_dir = $1 eq 'R '
 				? -d "$self->{dir}/$3"
 				: -d "$self->{dir}/$2";
-			$line = $tla_prefix->[$is_dir] . " $2";
+			$line = $tla_prefix->[$is_dir ? 1 : 0] . " $2";
 			$line .= "\t$3" if $3;
 		}
 
@@ -221,7 +234,9 @@ sub get_changeset ($$) {
 	my $cmd = is_baz()? "diff": "changes";
 	run_tla($cmd, "-d", $self->{dir}, "-o", $dir);
 
-	return -d $dir ? Arch::Changeset->new("changes.".$self->get_version(), $dir) : undef;
+	return -f "$dir/mod-dirs-index"
+		? Arch::Changeset->new("changes.".$self->get_version(), $dir)
+		: undef;
 }
 
 sub get_merged_log_text ($) {
@@ -289,47 +304,77 @@ sub get_missing_revision_descs ($;$) {
 	return $self->{missing_revision_descs}->{$version};
 }
 
+# for compatibility only, may be removed after summer 2005
 *get_missing_revision_details = *get_missing_revision_descs;
 *get_missing_revision_details = *get_missing_revision_details;
 
-sub iterate_ancestry_logs ($;$$) {
+sub get_previous_revision ($;$) {
 	my $self = shift;
-	my $cb = shift;
-	my $no_continuation = shift || 0;
+	my $revision = shift || $self->get_revision;
+
+	return adjacent_revision($revision, -1)
+		unless $revision =~ /^(.*)--version-0$/;
+
+	# handle version-0 case specially, can't be guessed from the name alone
+	my $revisions = $self->get_log_revisions($1);
+	until (pop @$revisions eq $revision) {
+	}
+	return $revisions->[-1];
+}
+
+sub get_ancestry_logs ($%) {
+	my $self = shift;
+	my %args = @_;
+	my $callback = $args{callback};
+	my $one_version = $args{one_version} || 0;
+	my $no_continuation = $args{no_continuation} || 0;
 
 	my @collected = ();
-	my $version = $self->get_version;
-	my $revisions = $self->get_log_revisions($version);
-	my $revision = $revisions->[-1];
+	my $version = $self->get_version if $one_version;
+	my $revision = $self->get_revision;
 	while ($revision) {
 		my $log = $self->get_log($revision);
 
 		# handle removed logs
 		unless ($log) {
-			$revision = adjacent_revision($revision, -1);
+			$revision = $self->get_previous_revision($revision);
 			next;
 		}
 
 		my $kind = $log->get_revision_kind;
 		if ($kind eq 'import') {
 			$revision = undef;
-		} elsif (!$no_continuation && $kind eq 'tag') {
-			$revision = $log->continuation_of;
+		} elsif ($kind eq 'tag') {
+			$revision = $no_continuation
+				? undef
+				: $log->continuation_of;
+			$revision &&= undef
+				if $one_version && $revision !~ /^\Q$version--/;
 		} else {
-			$revision = adjacent_revision($revision, -1);
+			$revision = $self->get_previous_revision($revision);
 		}
-		push @collected, $cb? $cb->($log): $log;
+		push @collected, $callback? $callback->($log): $log;
 		last unless $log;  # undefined by callback
 	}
 	return \@collected;
 }
 
-sub get_ancestry_revision_descs ($;$$) {
+# for compatibility only, may be removed after summer 2005
+sub iterate_ancestry_logs ($;$$) {
+	my $self = shift;
+	my $cb = shift;
+	my $nc = shift || 0;
+	return $self->get_ancestry_logs(callback => $cb, no_continuation => $nc);
+}
+
+sub get_history_revision_descs ($;$%) {
 	my $self = shift;
 	my $filepath = shift;
-	my $one_version = shift || 0;
+	@_ = (one_version => $_[0]) if @_ == 1;  # be compatible until summer 2005
+	my %args = @_;
+	my $callback = delete $args{callback};
 
-	my ($is_dir, $changed, $version);
+	my ($is_dir, $changed);
 	if (defined $filepath) {
 		my $full_filepath = "$self->{dir}/$filepath";
 		# currently stat the existing tree file/dir
@@ -340,33 +385,210 @@ sub get_ancestry_revision_descs ($;$$) {
 		$filepath = "." if $filepath eq "";  # avoid invalid input die
 	}
 
-	return $self->iterate_ancestry_logs(sub {
+	return $self->get_ancestry_logs(%args, callback => sub {
 		my $log = $_[0];
 		if (defined $filepath) {
 			$changed = $log->get_changes->is_changed("to", $filepath, $is_dir);
 			return unless defined $changed;
 		}
 		my $revision_desc = $log->get_revision_desc;
-		if ($one_version) {
-			$version ||= $revision_desc->{version};
-			if ($version ne $revision_desc->{version}) {
-				$_[0] = undef;
-				return;
-			}
-		}
+
 		if (defined $filepath) {
 			$revision_desc->{filepath} = $filepath;
 			$revision_desc->{is_filepath_added}    = $changed->{&ADD}?    1: 0;
 			$revision_desc->{is_filepath_renamed}  = $changed->{&RENAME}? 1: 0;
 			$revision_desc->{is_filepath_modified} = $changed->{&MODIFY}? 1: 0;
 
-			$filepath = $changed->{&RENAME}
+			$revision_desc->{orig_filepath} = $filepath = $changed->{&RENAME}
 				if $revision_desc->{is_filepath_renamed};
 			$_[0] = undef
 				if $revision_desc->{is_filepath_added};
 		}
-		return $revision_desc;
+
+		my @returned = $callback
+			? $callback->($revision_desc, $log)
+			: $revision_desc;
+
+		$_[0] = undef unless $revision_desc;  # undefined by callback
+		return @returned;
 	});
+}
+
+# for compatibility only, may be removed after 2005
+*get_ancestry_revision_descs = *get_history_revision_descs;
+*get_ancestry_revision_descs = *get_ancestry_revision_descs;
+
+# parse input like "3-5,8" or [ 3..5, 8 ] or { 3 => 1, 4 => 1, 5 => 1, 8 => 1 }
+sub _get_skip_hash_from_linenums ($$) {
+	my $linenums = shift;
+	my $max_linenum = shift;
+
+	my %skip_linenums = ();
+	if (defined $linenums) {
+		%skip_linenums = map { $_ => 1 } 1 .. $max_linenum;
+		if (!ref($linenums)) {
+			$linenums = [ map {
+				die "Invalid line range ($_)\n" unless /^(\d+)?(-|\.\.)?(\d+)?$/;
+				$2? ($1 || 1) .. ($3 || $max_linenum): $1
+			} split(',', $linenums) ];
+		}
+		if (ref($linenums) eq 'ARRAY') {
+			$linenums = { map { $_ => 1 } @$linenums };
+		}
+		if (ref($linenums) eq 'HASH') {
+			delete $skip_linenums{$_} foreach keys %$linenums;
+		}
+	}
+	return \%skip_linenums;
+}
+
+sub _eq ($$) {
+	my $value1 = shift;
+	my $value2 = shift;
+	return defined $value1 && defined $value2 && $value1 == $value2
+		|| !defined $value1 && !defined $value2;
+}
+
+# see tests/tree-annotate-1 to understand input and output
+sub _group_annotated_lines ($$) {
+	my $lines = shift;
+	my $line_rd_indexes = shift;
+
+	my $last_line_index = undef;
+	my $last_rd_index = -1;
+	for (my $i = @$lines; @$lines && $i >= 0; $i--) {
+		if ($i == 0 || !_eq($last_rd_index, -1) && !_eq($line_rd_indexes->[$i - 1], $last_rd_index)) {
+			splice(@$line_rd_indexes, $i + 1, $last_line_index - $i);
+			splice(@$lines, $i, $last_line_index - $i + 1, [ @$lines[$i .. $last_line_index] ]);
+		}
+		if ($i > 0 && (_eq($last_rd_index, -1) || !_eq($line_rd_indexes->[$i - 1], $last_rd_index))) {
+			$last_line_index = $i - 1;
+			$last_rd_index = $line_rd_indexes->[$i - 1];
+		}
+	}
+}
+
+sub get_annotate_revision_descs ($$;%) {
+	my $self = shift;
+	my $filepath = shift;
+	my %args = @_;
+	my $prefetch_callback = delete $args{prefetch_callback};
+	my $callback = delete $args{callback};
+	my $linenums = delete $args{linenums};
+	my $match_re = delete $args{match_re};
+	$linenums ||= [] if $match_re;  # no lines by default if regexp given
+
+	my $full_filepath = "$self->{dir}/$filepath";
+	die "No file $full_filepath to annotate\n" unless -f $full_filepath;
+
+	require Arch::DiffParser;
+	my $diff_parser = Arch::DiffParser->new;
+	my @lines;
+	load_file($full_filepath, \@lines);
+
+	if ($args{highlight}) {
+		require Arch::FileHighlighter;
+		my $fh = Arch::FileHighlighter->instance;
+		my $html_ref = $fh->highlight($full_filepath);
+		chomp($$html_ref);
+		@lines = split(/\n/, $$html_ref, -1);
+	}
+
+	my @line_rd_indexes = (undef) x @lines;
+	my @line_rd_index_refs = map { \$_ } @line_rd_indexes;
+
+	my $num_unannotated_lines = @lines;
+	my $num_revision_descs = 0;
+	my $session = Arch::Session->instance;
+
+	# limit to certain lines only if requested, like "12-24,50-75,100-"
+	my $skip_linenums = _get_skip_hash_from_linenums($linenums, 0 + @lines);
+	if ($match_re) {
+		my $re = eval { qr/$match_re/ };
+		die "get_annotate_revision_descs: invalid regexp /$match_re/: $@" unless defined $re;
+		$lines[$_ - 1] =~ $re && delete $skip_linenums->{$_} for 1 .. @lines;
+	}
+	$num_unannotated_lines -= keys %$skip_linenums;
+	$line_rd_index_refs[$_ - 1] = undef foreach keys %$skip_linenums;
+
+	my $revision_descs = $num_unannotated_lines == 0? []:
+	$self->get_history_revision_descs($filepath, %args, callback => sub {
+		my ($revision_desc, $log) = @_;
+		my $old_num_unannotated_lines = $num_unannotated_lines;
+
+		# there is no diff on import, so include all lines manually
+		if ($log->get_revision_kind eq 'import') {
+			for (my $i = 1; $i <= @line_rd_index_refs; $i++) {
+				my $ref = $line_rd_index_refs[$i - 1];
+				if ($ref && !$$ref) {
+					$$ref = $num_revision_descs;
+					$num_unannotated_lines--;
+				}
+			}
+			goto FINISH;
+		}
+		return () unless $revision_desc->{is_filepath_modified}
+			|| $revision_desc->{is_filepath_added};
+
+		# fetch changeset first
+		my $revision = Arch::Name->new($revision_desc->{version})
+			->apply($revision_desc->{name});
+		my $filepath = $revision_desc->{filepath};
+		$prefetch_callback->($revision, $filepath) if $prefetch_callback;
+		my $changeset = eval {
+			$session->get_revision_changeset($revision);
+		};
+		# stop if some ancestry archive is not registered or accessible
+		unless ($changeset) {
+			$_[0] = undef;
+			return ();
+		}
+		# get file diff if any
+		my $diff = $changeset->get_patch($filepath);
+		return () if $diff =~ /^\*/;  # ignore metadata modification
+
+		# calculate annotate data for file lines affected in diff
+		my $changes = $diff_parser->parse($diff)->changes;
+		foreach my $change (reverse @$changes) {
+			my ($ln1, $size1, $ln2, $size2) = @$change;
+			for (my $i = $ln2; $i < $ln2 + $size2; $i++) {
+				die "get_annotate_revision_descs: inconsistent source line #$i in diff:\n"
+					. "    $revision\n    $filepath\n"
+					. "    ($ln1, $size1, $ln2, $size2)\n"
+					if $i > @line_rd_index_refs;
+				my $ref = $line_rd_index_refs[$i - 1];
+				if ($ref && !$$ref) {
+					$$ref = $num_revision_descs;
+					$num_unannotated_lines--;
+				}
+			}
+			splice(@line_rd_index_refs, $ln2 - 1, $size2, (undef) x $size1);
+		}
+
+		FINISH:
+		die "get_annotate_revision_descs: inconsistency (some lines left)\n"
+			if $revision_desc->{is_filepath_added} && $num_unannotated_lines > 0;
+		die "get_annotate_revision_descs: inconsistency (got extra lines)\n"
+			if $num_unannotated_lines < 0;
+		$_[0] = undef
+			if $num_unannotated_lines == 0;
+
+		# skip history revisions that do not belong to annotate
+		return () if $old_num_unannotated_lines == $num_unannotated_lines;
+		$num_revision_descs++;
+
+		my @returned = $callback
+			? $callback->($revision_desc, $log)
+			: $revision_desc;
+
+		$_[0] = undef unless $revision_desc;  # undefined by callback
+		return @returned;
+	});
+
+	return $revision_descs unless wantarray;
+
+	_group_annotated_lines(\@lines, \@line_rd_indexes) if $args{group};
+	return (\@lines, \@line_rd_indexes, $revision_descs);
 }
 
 sub clear_cache ($;@) {
@@ -385,6 +607,19 @@ sub clear_cache ($;@) {
 	return $self;
 }
 
+sub get_file_diff ($$) {
+	my $self = shift;
+	my $path = shift;
+
+	my $cwd = getcwd;
+	chdir($self->{dir});
+	my $cmd = has_file_diffs_cmd()? "file-diffs": "file-diff";
+	my $diff = run_tla($cmd, "-N", $path);
+	chdir($cwd);
+
+	return $diff;
+}
+
 sub add ($;@) {
 	my $self = shift;
 	my $opts = shift if ref($_[0]) eq 'HASH';
@@ -394,10 +629,8 @@ sub add ($;@) {
 	push @args, "--id", $opts->{id} if $opts->{id};
 	push @args, @files;
 
-	my $dir = $opts->{dir} || $self->{dir};
-
 	my $cwd = getcwd();
-	chdir($dir) && run_tla("add-id", @args);
+	chdir($self->{dir}) && run_tla("add-id", @args);
 	chdir($cwd);
 
 	return $?;
@@ -405,13 +638,10 @@ sub add ($;@) {
 
 sub delete ($;@) {
 	my $self = shift;
-	my $opts = shift if ref($_[0]) eq 'HASH';
 	my @files = @_;
 
-	my $dir = $opts->{dir} || $self->{dir};
-
 	my $cwd = getcwd();
-	chdir($dir) && run_tla("delete-id", @files);
+	chdir($self->{dir}) && run_tla("delete-id", @files);
 	chdir($cwd);
 
 	return $?;
@@ -419,13 +649,10 @@ sub delete ($;@) {
 
 sub move ($;@) {
 	my $self = shift;
-	my $opts = shift if ref($_[0]) eq 'HASH';
 	my @files = @_;
 
-	my $dir = $opts->{dir} || $self->{dir};
-
 	my $cwd = getcwd();
-	chdir($dir) && run_tla("move-id", @files);
+	chdir($self->{dir}) && run_tla("move-id", @files);
 	chdir($cwd);
 
 	return $?;
@@ -444,12 +671,24 @@ sub import ($;$@) {
 	my $opts = shift if ref($_[0]) eq 'HASH';
 	my $version = shift || $self->get_version;
 
+	my $is_baz = is_baz();
 	my @args = ();
-	push @args, "--dir", $self->{dir} unless $opts->{dir};
-	foreach my $opt (qw(archive dir log summary log-message)) {
+	foreach my $opt (qw(archive log summary log-message)) {
 		push @args, "--$opt", $opts->{$opt} if $opts->{$opt};
 	}
-	push @args, "--setup" unless is_baz() || $opts->{nosetup};
+	push @args, "--setup" unless $is_baz || $opts->{nosetup};
+	push @args, "--dir" unless $is_baz;
+	push @args, $opts->{dir} || $self->{dir};
+
+	# baz-1.2 advertizes but does not actually support directory argument
+	# this block may be deleted later (the bug is fixed in baz-1.3)
+	if ($is_baz) {
+		my $cwd = getcwd();
+		my $dir = pop @args;
+		chdir($dir) && run_tla("import", @args, $version);
+		chdir($cwd);
+		return $?;
+	}
 
 	run_tla("import", @args, $version);
 
@@ -524,10 +763,16 @@ B<get_merged_revision_summaries>,
 B<get_merged_revisions>,
 B<get_missing_revisions>,
 B<get_missing_revision_descs>,
-B<iterate_ancestry_logs>,
-B<get_ancestry_revision_descs>,
+B<get_previous_revision>,
+B<get_ancestry_logs>,
+B<get_history_revision_descs>,
+B<get_annotate_revision_descs>,
 B<clear_cache>,
 B<add>,
+B<delete>,
+B<mode>,
+B<get_file_diff>,
+B<make_log>,
 B<import>,
 B<commit>.
 
@@ -545,6 +790,10 @@ Returns the project tree root.
 =item B<get_version>
 
 Returns the fully qualified tree version.
+
+=item B<get_revision>
+
+Returns the fully qualified tree revision.
 
 =item B<set_version> I<version>
 
@@ -628,26 +877,104 @@ I<name>, I<summary>, I<creator>, I<email>, I<date>, I<kind>.
 
 The default I<version> is the tree version (see C<get_version>).
 
-=item B<iterate_ancestry_logs> I<callback> [I<no_continuation>]
+=item B<get_previous_revision> [<revision>]
 
-For each ancestry revision (calculated from tree logs), call I<callback>
-that receives the B<Arch::Log> object and should return some list content.
-The values returned by the I<callback> are collected in one array and are
-returned as arrayref.
+Given the fully qualified revision name (defaulting to B<get_revision>)
+return the previous namespace revision in this tree version. Return undef
+for the I<base-0> revision. Note, the I<version-0> revision argument is
+handled specially.
+
+=item B<get_ancestry_logs> [I<%args>]
+
+Return all ancestry revision logs (calculated from the tree). The first log
+in the returned arrayref corresponds to the current tree revision, the last
+log is normally the original import log. If the tree has certain logs pruned
+(such practice is not recommended), then such pruned log is not returned and
+this method tries its best to determine its ancestor, still without
+accessing the archive.
+
+I<%args> accepts: flags I<no_continuation> and I<one_version>, and
+I<callback> to filter a revision log before it is collected.
 
 If I<no_continuation> is set, then do not follow tags backward.
 
-=item B<get_ancestry_revision_descs> [I<filepath>] [I<one_version>]
+If I<one_version> is set, then do not follow tags from the versions
+different than the initial version. This is similar to I<no_continuation>,
+but not the same, since it is possible to tag into the same version.
 
-The arrayref of all ancestry revision descriptions in the backward order.
-If I<filepath> is given, then only revisions that modified the given file
-(or dir) are returned. The revision description is hashref with keys
-I<name>, I<summary>, I<creator>, I<email>, I<date>, I<kind>, I<filepath>.
+The default callback is effectivelly:
 
-If I<one_version> is set then stop to report revision descriptions from the
-versions different than the initial version. I<one_version> flag is similar
-to I<no_continuation> flag in another method, but not the same, since it is
-possible to tag into the same version.
+    sub {
+        my ($log) = @_;
+        return $log;
+    }
+
+Note that if the callback does $_[0] = undef among other things, this is
+taken as a signal to stop processing of ancestry (the return value is still
+collected even in this case; return empty list to collect nothing).
+
+=item B<get_history_revision_descs> [I<filepath> [I<%args>]]
+
+Return arrayref of all ancestry revision descriptions in the backward order
+(i.e. from a more recent to an older). If I<filepath> is given, then only
+revisions that modified the given file (or dir) are returned. The revision
+description is hashref with keys I<name>, I<summary>, I<creator>, I<email>,
+I<date>, I<kind>.
+
+If I<filepath> if given, then the revision description hash additionally
+contains keys I<filepath>, I<orig_filepath> (if renamed on that revision),
+I<is_filepath_added>, I<is_filepath_renamed> and I<is_filepath_modified>.
+
+I<%args> accepts: flags I<no_continuation> and I<one_version>, and
+I<callback> to filter a revision description before it is collected.
+
+The default callback is effectivelly:
+
+    sub {
+        my ($revision_desc, $log) = @_;
+        return $revision_desc;
+    }
+
+The I<%args> flags and assigning to $_[0] in callback have the same meaning
+as in B<get_ancestry_logs>.
+
+=item B<get_annotate_revision_descs> [I<filepath> [I<%args>]]
+
+Return file annotation data. In scalar context, returns arrayref of all
+ancestry revision descriptions in the backward order (i.e. from a more
+recent to an older) responsible for last modification of all file lines.
+In list context, returns list of 3 values:
+
+    ($lines, $line_revision_desc_indexes, $revision_descs) =
+        $tree->get_annotate_revision_descs($filename);
+
+$lines is arrayref that contains all I<filepath> lines with no end-of-line;
+$line_revision_desc_indexes is arrayref of the same length that contains
+indexes to the $revision_descs arrayref. Note that $revision_descs is the
+same returned in the scalar context, it is similar to the one returned by
+B<get_history_revision_descs>, but possibly contains less elements, since
+some revisions only modified metadata, or only modified lines that were
+modified by other revisions afterward, all such revisions are not included.
+
+If some lines can't be annotated (usually, because the history was cut),
+then the corresonding $line_revision_desc_indexes elements are undefined.
+
+I<%args> accepts: flags I<no_continuation> and I<one_version>, and
+I<callback> to filter a revision description before it is collected.
+
+The default callback is effectivelly:
+
+    sub {
+        my ($revision_desc, $log) = @_;
+        return $revision_desc;
+    }
+
+The I<%args> flags and assigning to $_[0] in callback have the same meaning
+as in B<get_ancestry_logs> and B<get_history_revision_descs>.
+
+Additionally, I<prefetch_callback> is supported. If given, it is called
+before fetching a changeset, with two arguments: revision, and filename to
+look at the patch of which.
 
 =item B<clear_cache> [key ..]
 
@@ -657,9 +984,27 @@ Use this method to explicitly request this cache to be cleared.
 By default all cached keys are cleared; I<key> may be one of the strings
 'missing_revision_descs', 'missing_revisions'.
 
-=item B<add> [{ I<options> }] file ...
+=item B<add> [{ I<options> }] I<files ...>
 
-Similar to 'tla add'.
+Add exlicit inventory ids for I<files>. A specific inventory id may be
+passed via the I<options> hash with the key C<id>.
+
+=item B<delete> I<files ...>
+
+Delete explicit inventory ids for I<files>.
+
+=item B<move> I<old_file> I<new_file>
+
+Move exlicit file id for I<old_file> to I<new_file>.
+
+=item B<get_file_diff> I<file>
+
+Get modifications for I<file> as unified diff.
+
+=item B<make_log>
+
+Create a new commit log, if it does not yet exist. Returns the
+filename.
 
 =item B<import> [{ I<options> }] [I<version>]
 

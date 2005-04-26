@@ -240,7 +240,7 @@ Arch::RevisionBunches - manage bunches of related revisions
 
     my $rb = Arch::RevisionBunches->new;
     my $tree = Arch::Tree->new(".", own_logs => 1);
-    $rb->add_revision_descs($tree->get_ancestry_revision_descs);
+    $rb->add_revision_descs($tree->get_history_revision_descs);
     $rb->rebunch(25);  # the default is 50
     foreach my $bunch ($rb->get) {
         print "$bunch->{version}\n";

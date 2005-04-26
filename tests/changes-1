@@ -17,7 +17,7 @@ $changes->add(RENAME,      0, "oldfile", "newfile");
 $changes->add(MODIFY,      0, "modfile");
 $changes->add(META_MODIFY, 0, "modfile");
 $changes->add(META_MODIFY, 1, "metadir");
-$changes->add(REMOVE,      0, "delfile");
+$changes->add(DELETE,      0, "delfile");
 
 is($changes->count, 6, "good count");
 

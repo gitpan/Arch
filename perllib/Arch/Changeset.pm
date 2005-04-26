@@ -43,7 +43,8 @@ sub get_patch ($$;$$) {
 	my $filepath = shift;
 	my $type = shift || 0;
 	# 0 - unknown, 1 - modified (including metadata), 2 - new, 3 - removed
-	$type = 0 unless $type =~ /^[0123]$/;
+	$type = { MODIFY => 1, ADD => 2, DELETE => 3 }->{$type} || 0
+		unless $type =~ /^[0123]$/;
 	my $full_file_asis = shift || 0;
 	my $dir = $self->{dir};
 	my $change_type = "";
@@ -170,13 +171,13 @@ sub get_changes ($) {
 
 	# deleted dirs
 	foreach my $id (keys %orig_dirs) {
-		$changes->add(REMOVE, 1, $orig_dirs{$id})
+		$changes->add(DELETE, 1, $orig_dirs{$id})
 			unless (exists $mod_dirs{$id});
 	}
 
 	# deleted files
 	foreach my $id (keys %orig_files) {
-		$changes->add(REMOVE, 0, $orig_files{$id})
+		$changes->add(DELETE, 0, $orig_files{$id})
 			unless (exists $mod_files{$id});
 	}
 
@@ -257,6 +258,35 @@ sub get_changes ($) {
 	return $changes;
 }
 
+sub get_all_diffs ($;%) {
+	my $self = shift;
+	my %params = @_;
+
+	my @diffs = ();
+	my $changes = $self->get_changes;
+	foreach my $change ($changes->get) {
+		next if $change->{is_dir};
+		my $type = $change->{type};
+		next unless $type eq MODIFY
+			|| !$params{no_new_files} && ($type eq ADD || $type eq DELETE);
+		my $filepath = $change->{arguments}->[0];
+		next if $params{no_arch_files} &&
+			($filepath =~ m!^{arch}/! || $filepath =~ m!(^|/).arch-ids/!);
+		push @diffs, scalar $self->get_patch($filepath, $type)
+			|| "*** $filepath ***\n*** binary content not displayed ***";
+	}
+
+	return wantarray? @diffs: \@diffs;
+}
+
+sub join_all_diffs ($;%) {
+	my $self = shift;
+
+	my $diffs = $self->get_all_diffs(@_);
+
+	return join('', map { "\n$_\n" } @$diffs);
+}
+
 1;
 
 __END__
@@ -306,6 +336,8 @@ B<new>,
 B<get_patch>,
 B<get_index>,
 B<get_changes>,
+B<get_all_diffs>,
+B<join_all_diffs>,
 B<ancestor>.
 
 =over 4
@@ -352,6 +384,15 @@ Valid I<name>s are 'orig-dirs-index', 'orig-files-index', 'mod-dirs-index' and
 =item B<get_changes>
 
 Returns a list of changes in the changeset.
+
+=item B<get_all_diffs>
+
+Returns all diffs in the changeset (array or arrayref). This includes
+changes of types I<MODIFY>, I<ADD> and I<DELETE>.
+
+=item B<join_all_diffs>
+
+Returns concatenated output of all diffs in the changeset.
 
 =item B<ancestor>
 

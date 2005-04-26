@@ -28,7 +28,17 @@ sub new ($%) {
 	my $self = { $class->_default_fields };
 	bless $self, $class;
 	$self->init(%init);
+
+	no strict 'refs';
+	${"${class}::global_instance"} = $self;
 	return $self;
+}
+
+sub instance ($) {
+	my $class = shift;
+
+	no strict 'refs';
+	return ${"${class}::global_instance"} || $class->new;
 }
 
 sub init ($%) {
@@ -198,20 +208,36 @@ B<get_log>.
 
 =item B<new> [I<%args>]
 
-Create a new instanse of the concrete subclass (i.e. L<Arch::Session> or
+Create a new instance of the concrete subclass (i.e. L<Arch::Session> or
 L<Arch::Library>).
+
+=item B<instance>
+
+Alternative constructor. Return the last created instance of the concrete
+subclass (i.e. L<Arch::Session> or L<Arch::Library>) or create a new one.
+
+The purpose of this alternative constructor is to allow the singleton
+behaviour as well as certain Aspect Oriented Programming practices.
+
+Theoretical note: this design is acceptably good, and mixing B<new> and
+B<instance> constructors in the code usually does what is intended. However,
+if someone actually creates more than one object of any subclass, he has two
+choices to enforce correctness. Either only use B<instance> method in the
+code (singleton pattern), or alternatively create a temporary B<new> object
+before calling methods of other classes that internally use B<instance> to
+work with this subclass.
 
 =item B<init> I<%args>
 
-Initialize or reset the specified object state.
+Initialize or reset the object state.
 
 =item B<working_name> [I<name>]
 
 Set or get the default working operand for other methods.
 
 The argument may be anything that L<Arch::Name> constructor accepts,
-i.e. fully qualified string, arrayref, hashref or Arch::Name instanse.
-If needed, I<name> is converted to L<Arch::Name> instanse, and this is
+i.e. fully qualified string, arrayref, hashref or Arch::Name instance.
+If needed, I<name> is converted to L<Arch::Name> instance, and this is
 what is returned. Note that this object behaves as fully qualified name
 in string context.
 

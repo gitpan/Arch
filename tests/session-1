@@ -5,16 +5,16 @@
 use FindBin;
 use lib "$FindBin::Bin/../perllib";
 
-use Test::More tests => 35;
-use_ok("Arch::Util", "run_tla", "save_file", "is_baz");
-use_ok("Arch::TempFiles");
+use Test::More tests => 37;
 use_ok("Arch::Session");
+use_ok("Arch::Util", "run_tla", "save_file");
+use_ok("Arch::Backend", "has_archive_setup_cmd");
+use_ok("Arch::TempFiles");
 
 my $tmp = Arch::TempFiles->new;
 my $dir = $tmp->dir;
 die "Internal: Arch::TempFiles::dir didn't create dir\n" unless $dir && -d $dir;
 
-chdir($dir) or die "Internal: can't chdir $dir\n";
 $ENV{HOME} = $dir;
 
 sub run_tla0 (@) {
@@ -27,13 +27,13 @@ sub run_tla0 (@) {
 my $archive = 'arch-perl@example.com--test';
 my $userid = 'Arch Perl <arch-perl@example.com>';
 
-my $is_baz = is_baz();
+my $dont_setup = !has_archive_setup_cmd();
 my $status;
 
 run_tla0("my-id", $userid);
 run_tla0("make-archive $archive $dir/$archive");
 SKIP: {
-skip("baz has removed archive-setup", 2) if $is_baz;
+skip("this arch backend has no archive-setup", 2) if $dont_setup;
 run_tla0("archive-setup $archive/cat--brn--0");
 run_tla0("archive-setup $archive/cat--brn--1");
 }
@@ -68,7 +68,7 @@ is(@$categories, 1,               "  check number");
 is($categories->[0], 'cat',       "  check first element");
 
 SKIP: {
-skip("baz has removed empty branches", 8) if $is_baz;
+skip("this arch backend removed empty branches", 8) if $dont_setup;
 $session->working_names($archive, 'cat');
 is($session->working_name, "$archive/cat", "working_name");
 my $branches = $session->branches;
@@ -95,6 +95,7 @@ ok($session->is_archive_registered($archive), "is_archive_registered");
 ok(!$session->is_archive_registered('some@thing--test'), "!is_archive_registered");
 
 is_deeply($session->expanded_revisions, [ "$archive/cat--dog--0.1--base-0" ], "expanded_revisions");
+is_deeply($session->expanded_versions, [ "$archive/cat--dog--0.1" ], "expanded_versions");
 
 # TODO in tests/session-2:
 #   get_revision_descs, expanded_archive_info, get_log, get_changeset

@@ -67,7 +67,7 @@ sub new ($$) {
 	my $plen   = length($prefix);
 
 	# parse inventory output
-	my @inv_temp    = run_tla(qw{inventory -spbju -B --kind --ids --untagged}, $dir);
+	my @inv_temp    = run_tla(qw{inventory -spbju -B --kind --ids}, $dir);
 	my @inv_entries = ();
 	foreach my $line (@inv_temp) {
 		$line =~ /^([TSPBJU])([? ]) ([rd>]) ([^\t]+)\t(.+)$/

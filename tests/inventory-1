@@ -9,55 +9,54 @@ use Test::More tests => 11;
 
 BEGIN {
 	use_ok("Arch::Inventory", qw(:category :type));
+	use_ok("Arch::Test::Framework");
 }
 
-my $root = "$FindBin::Bin/..";
+my $framework = Arch::Test::Framework->new;
+my $archive   = $framework->make_archive;
+my $version   = $archive->make_version;
+my $tree      = Arch::Test::Cases::generate_complex_tree($framework, $version);
 
-my $expected_listing = `cd $root && tla inventory -tspbju -B --kind --ids --untagged`;
-my $expected_root = {
-	category => TREE,
-	untagged => 0,
-	type     => DIRECTORY,
-	path     => '',
-	id       => undef,
-	id_type  => undef,
-};
-my $expected_test = {
-	category => SOURCE,
-	untagged => '',
-	type     => FILE,
-	path     => 'tests/inventory-1',
-	id       => 'x_Enno_Cramer_<uebergeek@web.de>_Thu_Sep_30_23:07:28_2004_13483.0',
-	id_type  => 'x',
-};
 
-SKIP: {
-my $inv = Arch::Inventory->new($root);
-my $listing = $inv->get_listing;
-ok($listing,                        "inventory listing");
-skip("temporarily disabled", 9);
-is_deeply(
-	[ sort split(/\n/, $listing) ], [ sort split(/\n/, $expected_listing) ],
-	"correct inventory listing"
-);
+my $inv = Arch::Inventory->new($tree->root);
+isa_ok($inv, 'Arch::Inventory',  'new inventory');
+is($inv->directory, $tree->root, 'correct root directory');
 
 my $root = $inv->get_root_entry;
-my $children = delete $root->{children};
-ok($root,                           "root entry");
-$root->{category} = 'T' unless -d "{arch}";
-is_deeply($root, $expected_root,    "correct root entry");
-$root->{children} = $children;
+isa_ok($root, 'HASH',                    'root entry');
+is($inv->to_string($root), "T  d \t???", 'correct root entry string');
+is($inv->get_entry(''), $root,           'root entry via ->get_entry');
 
-my $entry = $inv->get_entry('');
-ok($entry,                          "root entry via get_entry");
-is($entry, $root,                   "is root entry");
+my @inv_listing = $tree->run_tla('inventory', '-Btspbju', '--kind', '--ids');
 
-$entry = $inv->get_entry($expected_test->{path});
-skip("not in arch tree", 4) unless defined $entry;
-ok($entry,                          "test script entry");
-is_deeply($entry, $expected_test,   "correct test script entry");
+my ($ok, $cnt);
 
-my $entry2 = $inv->get_entry(split /\//, $expected_test->{path});
-ok($entry2,                         "get_entry by path list");
-is($entry2, $entry,                 "is same test entry");
+$cnt = 0;
+$inv->foreach(sub { ++$cnt });
+is($cnt, scalar @inv_listing + 1, '->foreach count');
+
+$ok = 1;
+foreach my $line (@inv_listing) {
+	my (undef, undef, $path) = split /\s+/, $line;
+	my $entry = $inv->get_entry($path);
+
+	$ok &&= $entry->{path} eq $path;
 }
+ok($ok, 'scalar ->get_entry');
+
+$ok = 1;
+foreach my $line (@inv_listing) {
+	my (undef, undef, $path) = split /\s+/, $line;
+	my $entry = $inv->get_entry(split /\//, $path);
+
+	$ok &&= $entry->{path} eq $path;
+}
+ok($ok, 'list ->get_entry');
+
+ok(
+	eq_set(
+		[split /\n/, $inv->get_listing],
+		[@inv_listing]
+	),
+	'correct inventory listing'
+);

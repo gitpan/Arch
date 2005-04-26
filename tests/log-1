@@ -21,13 +21,14 @@ Keywords:
 ENDSTRING
 
 my $expected_desc = {
-	name    => 'patch-3',
-	version => 'migo@homemail.com--Perl-GPL/arch-perl--devel--0',
-	summary => 'new Arch::Storage method expanded_revisions',
-	creator => 'Mikhael Goikhman',
-	email   => 'migo@homemail.com',
-	date    => '2004-07-18 00:48:56 GMT',
-	kind    => 'cset',
+	name     => 'patch-3',
+	version  => 'migo@homemail.com--Perl-GPL/arch-perl--devel--0',
+	summary  => 'new Arch::Storage method expanded_revisions',
+	creator  => 'Mikhael Goikhman',
+	email    => 'migo@homemail.com',
+   username => 'migo',
+	date     => '2004-07-18 00:48:56 GMT',
+	kind     => 'cset',
 };
 
 my $expected_dump = <<ENDSTRING;
@@ -51,7 +52,7 @@ my $expected_dump = <<ENDSTRING;
 }
 ENDSTRING
 
-use Test::More tests => 10;
+use Test::More tests => 15;
 use_ok("Arch::Log");
 
 my $log = Arch::Log->new($message);
@@ -65,14 +66,23 @@ is($log->header('standard_date'), '2004-07-18 00:48:56 GMT', "standard_date");
 
 my $headers2 = $log->get_headers;
 is($headers, $headers2, "check get_headers consistency");
-ok(eq_hash($headers, $headers2), "the same in depth");
+is_deeply($headers, $headers2, "the same deeply");
 
 my $mod_files = $headers->{modified_files};
 ok($mod_files && ref($mod_files) eq 'ARRAY' && @$mod_files == 3, "modified_files");
 
-ok(eq_hash($log->get_revision_desc, $expected_desc), "get_revision_desc");
+my $revision_desc = $log->get_revision_desc;
+isa_ok($revision_desc, "HASH", "get_revision_desc type");
+delete $revision_desc->{age};
+is_deeply($revision_desc, $expected_desc, "get_revision_desc hash");
 
-ok(eq_hash($headers, eval $expected_dump), "compare expected headers");
+is_deeply($headers, eval $expected_dump, "compare expected headers");
+
+my ($version, $patchlevel) = $log->split_version;
+is($version, $expected_desc->{version}, "split_version version");
+is($patchlevel, $expected_desc->{name}, "split_version patchlevel");
+is($log->get_version, $expected_desc->{version}, "get_version");
+is($log->get_revision, "$version--$patchlevel", "get_revision");
 
 SKIP: {
 	skip("old Data::Dumper", 1) unless Data::Dumper->can('Sortkeys');
