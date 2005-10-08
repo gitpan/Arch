@@ -93,6 +93,6 @@ my $arch_backend = run_func("arch_backend");
 run_func("run_tla", "-h");
 my $tla_output = run_func("run_tla", "--version");
 my @tla_output = run_func("run_tla", "--version");
-like($tla_output, qr/\b(Tom Lord|Arch|Bazaar)\b/, "check $arch_backend --version output (scalar)");
+like($tla_output, qr/\b(Tom Lord|Arch|Bazaar|tla|baz)\b/, "check $arch_backend --version output (scalar)");
 ok(@tla_output > 0,               "check $arch_backend --version output (list)");
 

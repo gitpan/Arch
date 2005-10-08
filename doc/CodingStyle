@@ -37,6 +37,26 @@ should be clear what the line does just by glancing at its beginning anyway.
 
 Basically, please preserve the style of the existing code.
 
+The developers who use emacs, may add this to .emacs file:
+ 
+(c-add-style "arch-magic"
+	'("k&r"
+		(indent-tabs-mode . t)
+		(tab-width        . 4)
+		(c-basic-offset   . 4)
+		(c-offsets-alist
+			(arglist-intro . +)
+			(case-label    . +)
+			(inlambda      . c-lineup-dont-change)
+			(statement-block-intro . +))))
+ 
+(add-hook 'perl-mode-hook
+	(function (lambda ()
+		(c-set-style "arch-magic"))))
+
+To reformat existing code, marking all 'C-x h' and then 'M-x indent-region'.
+
+
 Arch Developement
 =================
 
@@ -44,6 +64,7 @@ GNU Arch is naturally the revision control system used to develop the code.
 
 Please use explicit tags for files. Tagline adds several practical problems
 and no real benefit, please don't use this tagging method in this project.
+
 
 Perl Style
 ==========

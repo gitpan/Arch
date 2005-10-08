@@ -7,7 +7,7 @@ use strict;
 use FindBin;
 use lib "$FindBin::Bin/../perllib";
 
-use Test::More tests => 13;
+use Test::More tests => 17;
 BEGIN {
 	$ENV{ARCH_BACKEND} = $ENV{TLA} = $ENV{BAZ} = "";
 	use_ok("Arch::Backend", qw(
@@ -19,6 +19,10 @@ BEGIN {
 		has_tree_version_dir_opt
 		has_tree_id_cmd
 		has_set_tree_version_cmd
+		has_cache_feature
+		get_cache_config
+		has_commit_version_arg
+		has_commit_files_separator
 	));
 }
 
@@ -40,3 +44,8 @@ ok(!has_tree_version_dir_opt(),          "check has_tree_version_dir_opt");
 ok(!has_tree_id_cmd(),                   "check has_tree_id_cmd");
 ok(has_set_tree_version_cmd(),           "check has_set_tree_version_cmd");
 
+ok(!has_cache_feature(),                 "check has_cache_feature");
+is_deeply(get_cache_config(), { dir => undef }, "check get_cache_config");
+
+ok(has_commit_version_arg(),             "check has_commit_version_arg");
+ok(has_commit_files_separator(),         "check has_commit_files_separator");

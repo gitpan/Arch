@@ -41,7 +41,7 @@ sub exceeded ($) {
 	return $self->{exceeded} if defined $self->{exceeded};
 
 	my ($hostname, $aliases, $addrtype, $length, $addr) = gethostent();
-	my $hostip = join('.', unpack("C$length", $addr));
+	my $hostip = join('.', unpack("C$length", $addr)) if $length && $addr;
 	$hostname ||= "unknown-host";
 	$hostip ||= "127.0.0.1";
 	die "Internal: Unexpected hostname ($hostname)\n" if $hostname =~ /\s/;

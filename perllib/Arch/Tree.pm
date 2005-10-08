@@ -20,7 +20,10 @@ use strict;
 package Arch::Tree;
 
 use Arch::Util qw(run_tla load_file _parse_revision_descs adjacent_revision);
-use Arch::Backend qw(has_file_diffs_cmd has_tree_version_dir_opt has_tree_id_cmd has_set_tree_version_cmd is_baz);
+use Arch::Backend qw(
+	is_baz has_tree_version_dir_opt has_tree_id_cmd has_set_tree_version_cmd
+	has_file_diffs_cmd has_commit_version_arg has_commit_files_separator
+);
 use Arch::Session;
 use Arch::Name;
 use Arch::Log;
@@ -470,12 +473,15 @@ sub _group_annotated_lines ($$) {
 
 sub get_annotate_revision_descs ($$;%) {
 	my $self = shift;
-	my $filepath = shift;
+	my $filepath = shift || die "No file to annotate\n";
 	my %args = @_;
+
 	my $prefetch_callback = delete $args{prefetch_callback};
 	my $callback = delete $args{callback};
 	my $linenums = delete $args{linenums};
 	my $match_re = delete $args{match_re};
+	my $highlight = delete $args{highlight};
+	my $full_history = delete $args{full_history};
 	$linenums ||= [] if $match_re;  # no lines by default if regexp given
 
 	my $full_filepath = "$self->{dir}/$filepath";
@@ -486,7 +492,7 @@ sub get_annotate_revision_descs ($$;%) {
 	my @lines;
 	load_file($full_filepath, \@lines);
 
-	if ($args{highlight}) {
+	if ($highlight) {
 		require Arch::FileHighlighter;
 		my $fh = Arch::FileHighlighter->instance;
 		my $html_ref = $fh->highlight($full_filepath);
@@ -514,6 +520,8 @@ sub get_annotate_revision_descs ($$;%) {
 	my $revision_descs = $num_unannotated_lines == 0? []:
 	$self->get_history_revision_descs($filepath, %args, callback => sub {
 		my ($revision_desc, $log) = @_;
+
+		goto FINISH if $num_unannotated_lines == 0;
 		my $old_num_unannotated_lines = $num_unannotated_lines;
 
 		# there is no diff on import, so include all lines manually
@@ -527,7 +535,9 @@ sub get_annotate_revision_descs ($$;%) {
 			}
 			goto FINISH;
 		}
-		return () unless $revision_desc->{is_filepath_modified}
+
+		# only interested in file addition and modification
+		goto FINISH unless $revision_desc->{is_filepath_modified}
 			|| $revision_desc->{is_filepath_added};
 
 		# fetch changeset first
@@ -545,7 +555,8 @@ sub get_annotate_revision_descs ($$;%) {
 		}
 		# get file diff if any
 		my $diff = $changeset->get_patch($filepath);
-		return () if $diff =~ /^\*/;  # ignore metadata modification
+		# ignore metadata modification
+		goto FINISH if $diff =~ /^\*/;
 
 		# calculate annotate data for file lines affected in diff
 		my $changes = $diff_parser->parse($diff)->changes;
@@ -570,11 +581,15 @@ sub get_annotate_revision_descs ($$;%) {
 			if $revision_desc->{is_filepath_added} && $num_unannotated_lines > 0;
 		die "get_annotate_revision_descs: inconsistency (got extra lines)\n"
 			if $num_unannotated_lines < 0;
-		$_[0] = undef
-			if $num_unannotated_lines == 0;
 
-		# skip history revisions that do not belong to annotate
-		return () if $old_num_unannotated_lines == $num_unannotated_lines;
+		# stop "history" processing if all lines are annotated
+		$_[0] = undef
+			if !$full_history && $num_unannotated_lines == 0;
+
+		# skip "history" revision that does not belong to "annotate"
+		return () if !$full_history
+			&& $old_num_unannotated_lines == $num_unannotated_lines;
+
 		$num_revision_descs++;
 
 		my @returned = $callback
@@ -695,21 +710,37 @@ sub import ($;$@) {
 	return $?;
 }
 
-sub commit ($;$@) {
+sub commit ($;$) {
 	my $self = shift;
 	my $opts = shift if ref($_[0]) eq 'HASH';
-	my $version = shift || $self->get_version;
+	my $version = shift;
 
 	my @args = ();
 	push @args, "--dir", $self->{dir} unless $opts->{dir};
 	foreach my $opt (qw(archive dir log summary log-message file-list)) {
-		push @args, "--$opt", $opts->{$opt} if $opts->{$opt};
+		my $_opt = $opt; $_opt =~ s/-/_/g;
+		push @args, "--$opt", $opts->{$_opt} if $opts->{$_opt};
 	}
 	foreach my $opt (qw(strict seal fix out-of-date-ok)) {
-		push @args, "--$opt" if $opts->{$opt};
+		my $_opt = $opt; $_opt =~ s/-/_/g;
+		push @args, "--$opt" if $opts->{$_opt};
 	}
 
-	run_tla("commit", @args, $version);
+	if (has_commit_version_arg()) {
+		push @args, $version || $self->get_version;
+	} elsif ($version) {
+		warn "This arch backend's commit does not support version arg\n";
+	}
+
+	my $files = $opts->{files};
+	if ($files) {
+		die "commit: files is not ARRAY ($files)\n"
+			unless ref($files) eq 'ARRAY';
+		push @args, "--" if has_commit_files_separator();
+		push @args, @$files;
+	}
+
+	run_tla("commit", @args);
 
 	return $?;
 }
@@ -976,6 +1007,12 @@ Additionally, I<prefetch_callback> is supported. If given, it is called
 before fetching a changeset, with two arguments: revision, and filename to
 look at the patch of which.
 
+More I<%args> keys are I<linenums> (either string or arrayref or
+hashref), I<match_re> (regular expression to filter lines). And flags
+I<highlight> (syntax highlight lines using markup), I<full_history>
+(include all file history revision even those that didn't add the current
+file lines).
+
 =item B<clear_cache> [key ..]
 
 For performance reasons, some method results are cached (memoized in fact).
@@ -1013,6 +1050,10 @@ Similar to 'tla import'.
 =item B<commit> [{ I<options> }] [I<version>]
 
 Commit changes in tree.
+
+Note, I<version> argument is not supported in newer baz versions.
+
+Optional file limits may be passed using I<files> arrayref in I<options>.
 
 =back
 

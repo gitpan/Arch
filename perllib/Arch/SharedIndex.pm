@@ -390,3 +390,226 @@ sub query_index_list ($$) {
 }
 
 1;
+
+__END__
+
+=head1 NAME
+
+Arch::SharedIndex - a synchronized data structure (map) for IPC
+
+=head1 SYNOPSIS
+
+    use Arch::SharedIndex;
+
+    my $map = Arch::SharedIndex->new(file => "/tmp/logintimes.idx");
+    my $time = time;
+    $map->store(migo => $time - 75, bob => $time - 5, enno => $time);
+
+    printf "All users: %s, %s, %s\n", $map->keys;
+    printf "New users: %s\n", $map->grep(sub { $_[1] == $time });
+    printf "Login time of migo: %s\n", $map->fetch('migo');
+
+    $map->update(sub { $_[1] + 10 }, sub { $_[1] == $time });
+    $map->store(migo => $time);
+    $map->delete('bob');
+
+    printf "Logged users with times: (%s)\n", join(", ", $map->hash);
+
+=head1 DESCRIPTION
+
+Arch::SharedIndex provides a key-value map that can be shared and
+accessed safely by multiple processes.
+
+=head1 METHODS
+
+The following methods are available:
+
+B<new>,
+B<encode_value>,
+B<decode_value>,
+B<store_value>,
+B<fetch_value>,
+B<delete_value>,
+B<store>,
+B<fetch>,
+B<delete>,
+B<fetch_store>,
+B<keys>,
+B<values>,
+B<hash>,
+B<list>,
+B<grep>,
+B<filter>,
+B<update>,
+B<query_index_list>.
+
+=over 4
+
+=item B<new> I<options>
+
+Create a new index object.  I<option> is a hash of parameters.
+
+=over 4
+
+=item B<file>
+
+The path of the index file, used to store data.  Must not be omitted.
+
+=item B<can_create>
+
+Whether the index file is automatically created.  Defaults to 1.
+
+=item B<max_size>
+
+Maximum number of entries in the index.  Defaults to 0 (no limit).
+
+=item B<expiration>
+
+Timeout in seconds after which unused entries are removed.  Defaults
+to 0 (don't expire entries)
+
+=item B<time_renewal>
+
+Whether fetching values resets the entry expiration timeout.  Defaults
+to 1 if B<max_size> is set, 0 otherwise.
+
+=item B<perl_data>
+
+Whether non-scalar perl data can be stored.  If true, values are
+encoded using Data::Dumper.
+
+=item B<perl_data_indent>
+
+Indent value for Data::Dumper when B<perl_data> is set.  Defaults to
+0.
+
+=item B<perl_data_pair>
+
+Pair value for Data::Dumper when B<perl_data> is set.  Defaults to
+C<=E<gt>>.
+
+=back
+
+=item B<encode_value> I<ref>
+
+Encode the value referenced by I<ref> in a string representation.
+The encoding is done in place.
+
+=item B<decode_value> I<ref>
+
+Decode a value encoded with B<encode_value> from its string
+representation.  The decoding is done in place.
+
+=item B<store_value> I<key> I<token> I<value>
+
+Store a value for the given I<key> and I<token>.  Create a new token
+if none is given.  Returns the (new) token.  Sub-classes should
+implement this method.
+
+=item B<fetch_value> I<key> I<token>
+
+Fetch the value stored for the given I<key> and I<token>.  Sub-classes
+should implement this method.
+
+=item B<delete_value> I<key> I<token>
+
+Delete a value stored for the given I<key> and I<value>.  Sub-classes
+should implement this method.
+
+=item B<store> I<kvp>
+
+Store a set of key-value pairs.  I<kvp> may either be a reference to a
+hash or array, or list of keys and values.
+
+=item B<fetch> I<keys>
+
+Fetch values stored for a list of keys. I<keys> may either be an array
+reference, or a list of keys.
+
+=item B<delete> I<keys>
+
+Delete values stored for a list of keys.  I<keys> may either be an
+array reference, or a list of keys.
+
+=item B<fetch_store> I<mapfunc> I<keys>
+
+This is an optimized (B<fetch> or B<store>) in a single step.  Fetch
+values stored for keys, just like B<fetch>, but store values for the
+missing keys in the process.  I<keys> may be an array reference or a list
+of keys.  I<mapfunc> will be called once for every key in I<keys> that
+has no associated value, with the key as its only argument.  Its return
+value will be stored for that key.
+
+=item B<keys>
+
+Returns a list of all valid keys.  In scalar context, returns an array
+reference.
+
+Keys are returned in no particular order, but B<values> will return
+values in matching order if the index has not been changed between
+calls.
+
+=item B<values>
+
+Returns a list of all stored values.  In scalar context, returns an
+array reference.
+
+Values are returned in no particular order, but B<keys> will return
+values in matching order if the index has not been changed between
+calls.
+
+=item B<hash>
+
+Returns the stored keys and values as a perl hash.  In scalar context,
+returns hash reference.
+
+=item B<list>
+
+Returns the stored keys and values as a list of pairs (array
+references with two elements each).  In scalar context, returns an
+array reference.
+
+=item B<grep> I<predicate>
+
+Returns a list of keys for which I<predicate> returns a true value.
+I<predicate> is called once for every key, with the key and the stored
+value as its first and second argument.
+
+=item B<filter> I<predicate>
+
+Deletes every entry for which I<predicate> returns a true value.
+I<predicate> is called once for every key, with the key and the stored
+value asi its first and second argument.
+
+=item B<update> I<mapfunc> I<predicate>
+
+Updates the value for every key for which I<predicate> returns a true
+value with the return value from I<mapfunc>.  Both I<predicate> and
+I<mapfunc> are called with the key and the stored values as their
+first and second argument.
+
+=item B<update_index_list> I<code>
+
+Synchronize access and call I<code> with a reference to a list of
+pairs, each containing the key and token, for every stored value.
+
+Used internally by B<store>, B<fetch>, B<delete>, B<fetch_store>,
+B<keys>, B<values>, B<hash>, B<list>, B<grep>, B<filter> and B<update>.
+
+=back
+
+=head1 BUGS
+
+Awaiting for your reports.
+
+=head1 AUTHORS
+
+Mikhael Goikhman (migo@homemail.com--Perl-GPL/arch-perl--devel).
+
+Enno Cramer (uebergeek@web.de--2003/arch-perl--devel).
+
+=head1 SEE ALSO
+
+For more information, see L<Arch::SharedCache>.
+
+=cut

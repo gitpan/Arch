@@ -24,6 +24,8 @@ use base 'Arch::Storage';
 use Arch::Util qw(run_tla load_file standardize_date parse_creator_email date2age);
 use Arch::Changeset;
 use Arch::Log;
+use Arch::Backend qw(has_revlib_patch_set_dir);
+use Arch::TempFiles qw(temp_dir);
 
 sub _default_fields ($) {
 	my $this = shift;
@@ -206,10 +208,17 @@ sub get_revision_changeset ($$) {
 	my $self = shift;
 	my $revision = shift || die "get_revision_changeset: No revision given\n";
 
-	my $tree_root = $self->find_revision_tree($revision);
-	die "No revision $revision found in library\n" unless $tree_root;
+	my $dir;
+	if (has_revlib_patch_set_dir()) {
+		my $tree_root = $self->find_revision_tree($revision);
+		die "No revision $revision found in library\n" unless $tree_root;
 
-	my $dir = "$tree_root/,,patch-set";
+		$dir = "$tree_root/,,patch-set";
+	} else {
+		$dir = temp_dir();
+		run_tla('get-changeset', $revision, $dir);
+	}
+
 	return Arch::Changeset->new($revision, $dir);
 }
 
@@ -222,12 +231,18 @@ sub get_revision_log ($$) {
 	my $self = shift;
 	my $revision = shift || die "get_revision_log: No revision given\n";
 
-	my $tree_root = $self->find_revision_tree($revision);
-	die "No revision $revision found in library\n" unless $tree_root;
+	my $message;
+	if (has_revlib_patch_set_dir()) {
+		my $tree_root = $self->find_revision_tree($revision);
+		die "No revision $revision found in library\n" unless $tree_root;
 
-	my $log_file = "$tree_root/,,patch-set/=log.txt";
-	die "Missing log $log_file in revision library\n" unless -f $log_file;
-	my $message = load_file($log_file);
+		my $log_file = "$tree_root/,,patch-set/=log.txt";
+		die "Missing log $log_file in revision library\n" unless -f $log_file;
+		$message = load_file($log_file);
+	} else {
+		$message = run_tla('library-log', $revision);
+	}
+
 	return Arch::Log->new($message);
 }
 

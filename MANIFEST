@@ -38,6 +38,9 @@ rpm/Arch.spec
 rpm/Makefile
 samples/arch-run-demo-1
 samples/arch-run-demo-2
+tests/_all-1
+tests/_all-2
+tests/_all-3
 tests/backend-1
 tests/changes-1
 tests/diffparser-1

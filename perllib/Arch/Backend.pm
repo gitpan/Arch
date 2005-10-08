@@ -22,13 +22,16 @@ package Arch::Backend;
 use Arch::Util;
 
 use Exporter;
-use vars qw(@ISA @EXPORT_OK $EXE $NAME $VRSN);
+use vars qw(@ISA @EXPORT_OK $EXE $NAME $VRSN $CACHE_CONFIG);
 
 @ISA = qw(Exporter);
 @EXPORT_OK = qw(
 	arch_backend arch_backend_name arch_backend_version is_baz is_tla
 	has_archive_setup_cmd has_file_diffs_cmd has_register_archive_name_arg
 	has_tree_version_dir_opt has_tree_id_cmd has_set_tree_version_cmd
+	has_cache_feature get_cache_config
+	has_commit_version_arg has_commit_files_separator
+	has_revlib_patch_set_dir
 );
 
 BEGIN {
@@ -99,6 +102,49 @@ sub has_set_tree_version_cmd () {
 	return is_tla();
 }
 
+sub has_cache_feature () {
+	return is_baz();
+}
+
+sub get_cache_config () {
+	unless ($CACHE_CONFIG) {
+		my $output = "";
+
+		if (has_cache_feature()) {
+			# baz-1.1 .. baz-1.3.2 prints on stderr instead of stdout
+			my $baz_is_buggy = 1;
+			if ($baz_is_buggy) {
+				my $file = "$ENV{HOME}/.arch-params/=arch-cache";
+				if (-f $file) {
+					my $dir = Arch::Util::load_file($file);
+					$dir =~ s/\r?\n.*//s;
+					$output = "Location: $dir\n" if $dir && -d $dir;
+				}
+			} else {
+				$output = Arch::Util::run_tla("cache-config");
+			}
+		}
+
+		my $location = $output =~ /^Location: (.*)/m && $1 || undef;
+		$CACHE_CONFIG = {
+			dir => $location,
+		};
+	}
+	return $CACHE_CONFIG;
+}
+
+sub has_commit_version_arg () {
+	return is_tla() || is_baz() && arch_backend_version() =~ /^1\.[0123]/;
+}
+
+sub has_commit_files_separator () {
+	return has_commit_version_arg();
+}
+
+sub has_revlib_patch_set_dir () {
+	return is_tla() || is_baz() && arch_backend_version() =~ /^1\.[0123]/;
+}
+
 1;
 
 __END__
@@ -111,11 +157,11 @@ Arch::Backend - Arch backend feature specific functions
 
     use Arch::Backend qw(arch_backend is_baz has_file_diffs_cmd);
 
-    my $exe = arch_backend();  # or $Arch::Backend::EXE
-    print "No tree, try '$exe init-tree'\n";
+    my $exe = arch_backend();
+    print "Not in tree, try '$exe init-tree'\n";
 
-    print "Using baz ", Arch::Backend::arch_backend_version,
-		" as a backend\n" if is_baz();
+    my $version = Arch::Backend::arch_backend_version;
+    print "Using baz $version as a backend\n" if is_baz();
 
     my $cmd = has_file_diffs_cmd()
         ? "file-diffs"
@@ -144,14 +190,19 @@ B<has_file_diffs_cmd>,
 B<has_register_archive_name_arg>,
 B<has_tree_version_dir_opt>,
 B<has_tree_id_cmd>,
-B<has_set_tree_version_cmd>.
+B<has_set_tree_version_cmd>,
+B<has_cache_feature>,
+B<get_cache_config>.
 
 =over 4
 
 =item B<arch_backend> [I<exe>]
 
 Return or set the arch backend executable, like "/opt/bin/tla" or "baz-1.3".
-By default, "tla" is used.
+
+By default, the arch backend executable is taken from environment variable
+$ARCH_BACKEND (or $TLA, or $BAZ). If no environment variable is set, then
+"tla" is used.
 
 =item B<arch_backend_name>
 
@@ -200,6 +251,31 @@ This is true for baz.
 
 Return true if the arch backend has "set-tree-version" command.
 baz removed this command and merged it into "tree-version".
+
+=item B<has_cache_feature>
+
+Return true if the arch backend supports Arch Cache feature.
+This is true for baz.
+
+=item B<get_cache_config>
+
+Return hash with the following keys: dir - directory of the local cache
+(or undef if not applicable).
+
+=item B<has_commit_version_arg>
+
+Return true if the arch backend's "commit" command supports version
+argument. baz-1.4 removed this functionality.
+
+=item B<has_commit_files_separator>
+
+Return true if the arch backend's "commit" command requires "--"
+argument to separate files. baz-1.4 removed this separator.
+
+=item B<has_revlib_patch_set_dir>
+
+Return true if the arch backend's creates ,,patch-set subdirectory in
+revision library. baz-1.4 removed this functionality.
 
 =back
 

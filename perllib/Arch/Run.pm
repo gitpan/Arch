@@ -26,7 +26,7 @@ use constant RAW   => 0;
 use constant LINES => 1;
 use constant ALL   => 2;
 
-use vars qw(@ISA @EXPORT_OK @OBSERVERS %SUBS %EXIT $DETACH_CONSOLE);
+use vars qw(@ISA @EXPORT_OK @OBSERVERS %SUBS $DETACH_CONSOLE);
 
 use Exporter;
 
@@ -36,21 +36,8 @@ use Exporter;
 	RAW LINES ALL
 );
 
-sub REAPER {
-	my $child;
-	# If a second child dies while in the signal handler caused by the
-	# first death, we won't get another signal. So must loop here
-	# else we will leave the unreaped child as a zombie. And the next
-	# time two children die we get another zombie. And so on.
-	while (($child = waitpid(-1, WNOHANG)) > 0) {
-		$EXIT{$child} = $?;
-	}
-	$SIG{CHLD} = \&REAPER;  # still loathe sysV
-}
-
 BEGIN {
 	$DETACH_CONSOLE = 0;
-	$SIG{CHLD} = \&REAPER;
 }
 
 sub set_detach_console ($) {
@@ -140,13 +127,6 @@ sub handle_output ($) {
 	_notify('cmd_output_raw', $key, $buffer)
 		if $result > 0;
 
-	# remove closed handles
-	if (! $result) {
-		$rec->{done} = 1;
-	}
-
-	return unless defined $rec->{data};
-
 	# handle output
 	if ($result) {
 		# raw mode
@@ -172,44 +152,19 @@ sub handle_output ($) {
 	} else {
 		$rec->{data}->($rec->{accum})
 			if length $rec->{accum};
+
+		my $pid = waitpid $key, 0;
+		my $exitcode = $pid == $key ? $? : undef;
+
+		_notify('cmd_exit', $exitcode);
+
+		$rec->{exit}->($exitcode)
+			if defined $rec->{exit};
+
+		delete $SUBS{$key};
 	}
 }
 
-# NOTE: we might be able to get rid of this function.
-#  o call exit cb from REAPER if $SUBS{$pid}->{done} is already set,
-#    add $pid to %EXITS otherwise
-#  o call exit cb from handle_output when sysread returns 0/undef
-#    and $pid is in %EXITS
-#  o remove record when exit cb is called
-# ATTENTION: set ->{done} before testing exitance of $pid in %EXITS
-sub handle_exits () {
-	foreach my $key (keys %EXIT) {
-		my $rec = $SUBS{$key};
-
-		# handle non-Arch::Run children
-		# NOTE: we can not check for $SUBS{$pid} in REAPER
-		#   because the child process can die before the parent
-		#   gets a chance to create its record.
-		if (! defined $rec) {
-			delete $EXIT{$key};
-			next;
-		}
-
-		# call exit callback only after we got all data
-		if ($rec->{done}) {
-			_notify('cmd_exit', $key, $EXIT{$key});
-
-			$rec->{exit}->($EXIT{$key})
-				if defined $rec->{exit};
-
-			delete $SUBS{$key};
-			delete $EXIT{$key};
-		}
-	}
-}
-
-# I hope the CHLD signal causes IO::Poll::poll to exit.  This is prone
-# to deadlocks if not.
 sub poll (;$) {
 	my $count = 0;
 
@@ -228,9 +183,6 @@ sub poll (;$) {
 		}
 	}
 
-	# handle terminated children
-	handle_exits;
-
 	return $count;
 }
 
@@ -247,24 +199,21 @@ sub wait ($) {
 			$old_cb->($ret)
 				if defined $old_cb;
 		};
-	}
 
-	# Poll until a) out target has exited or b) there are no more file
-	# handles to poll for.
-	while (exists $SUBS{$pid} && poll(undef)) {};
-
-	# A child may have closed its output but keep running.  If it is
-	# the only child we manage, IO::Poll will return immediatly
-	# without results.  This would cause a busy loop until our only
-	# child finally exits.  So in this case we interleave calls to poll
-	# with sleep (using select) to keep cpu consumption down.
-	while (exists $SUBS{$pid}) {
-		select undef, undef, undef, 0.1;
-		poll(0.0);
+		# Poll until a) our target has exited or b) there are no more
+		# file handles to poll for.
+		while (exists $SUBS{$pid} && poll(undef)) {}
 	}
 
 	# returns undef if childs exit has already been handled
 	return $ret;
+}
+
+sub killall (;$) {
+	my $signal = shift || 'INT';
+
+	kill $signal, keys %SUBS;
+	while (%SUBS && poll(undef)) {}
 }
 
 sub _notify (@) {
@@ -341,9 +290,9 @@ B<run_with_pipe>,
 B<run_async>,
 B<get_output_handle>,
 B<handle_output>,
-B<handle_exits>,
 B<poll>,
 B<wait>,
+B<killall>,
 B<observe>,
 B<unobserve>.
 
@@ -435,11 +384,6 @@ B<ATTENTION:> Call this method only if there really is output to be
 read.  It will block otherwise.
 
 
-=item B<handle_exits>
-
-Handle any pending subprocess exits.
-
-
 =item B<poll> I<$timeout>
 
 Check running subprocesses for available output and run callbacks as
@@ -454,6 +398,12 @@ Returns the number of processes that had output available.
 Wait for subprocess I<$pid> to terminate, repeatedly calling B<poll>.
 Returns the processes exit status or C<undef> if B<poll> has already been
 called after the processes exit.
+
+
+=item B<killall> [I<$signal>]
+
+Send signal I<$signal> (B<SIGINT> if omitted) to all managed
+subprocesses, and wait until every subprocess to terminate.
 
 
 =item B<observe> I<$observer>

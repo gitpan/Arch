@@ -79,6 +79,8 @@ sub working_names ($;$@) {
 sub fixup_name_alias ($) {
 	my $self = shift;
 	$self->{name_alias} = 0;
+	$self->{version_alias} = undef;
+	$self->{revision_alias} = undef;
 
 	my $name = $self->{name};
 	my ($version, $revision) = ($name->get)[3, 4];
@@ -97,6 +99,7 @@ sub fixup_name_alias ($) {
 			$name->$element($value);
 			$name->revision($revision) unless $element eq 'revision';
 			$self->{name_alias} = 1;
+			$self->{"${element}_alias"} = $alias;
 		}
 	}
 }

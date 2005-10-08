@@ -27,7 +27,8 @@ $window->signal_connect(destroy => sub { Gtk2->main_quit });
 $window->set_default_size(300, 400); $window->show_all;
 
 sub append_text {
-	$text->get_buffer->insert($text->get_buffer->get_end_iter, $_[0]);
+	my $str = shift;
+	$text->get_buffer->insert($text->get_buffer->get_end_iter, $str);
 }
 
 my $keep = 1;

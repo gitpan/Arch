@@ -21,12 +21,14 @@ package Arch::Session;
 
 use base 'Arch::Storage';
 
-use Arch::Util qw(run_tla _parse_revision_descs save_file);
+use Arch::Util qw(run_tla _parse_revision_descs load_file save_file);
+use Arch::Backend qw(get_cache_config);
 use Arch::TempFiles qw(temp_dir_name temp_dir);
 use Arch::Changeset;
 use Arch::Library;
 use Arch::Log;
 use Arch::Tree;
+use Arch::Tarball;
 
 sub _default_fields ($) {
 	my $this = shift;
@@ -246,11 +248,25 @@ sub get_revision_changeset ($$;$) {
 	my $revision = shift;
 	my $dir = shift;
 
+	# use revlib unless specific result dir requested (and unless disabled)
 	if (!$dir && $self->{use_library}) {
 		$dir = Arch::Library->instance->find_revision_tree($revision);
 		if ($dir) {
 			$dir .= "/,,patch-set";
 			goto RETURN_CHANGESET;
+		}
+	}
+
+	# use arch cache if available
+	my $cache_dir = get_cache_config()->{dir};
+	if (!$dir && $cache_dir) {
+		my $delta_file = "$cache_dir/archives/$revision/delta.tar.gz";
+		if (-r $delta_file) {
+			my $tarball = Arch::Tarball->new(file => $delta_file);
+			my $subdir = $revision; $subdir =~ s!.*/!!;
+			$dir = $tarball->extract . "/$subdir.patches";
+			$dir = "" unless -d $dir;
+			goto RETURN_CHANGESET if $dir;
 		}
 	}
 
@@ -353,10 +369,25 @@ sub get_specified_changeset ($$) {
 sub get_revision_log ($$) {
 	my $self = shift;
 	my $revision = shift || die "get_revision_log: No revision given\n";
-	my $message = run_tla("cat-archive-log", $revision);
+
+	my $message;
+
+	# use arch cache if available
+	my $cache_dir = get_cache_config()->{dir};
+	if ($cache_dir) {
+		my $log_file = "$cache_dir/archives/$revision/log";
+		if (-r $log_file) {
+			load_file($log_file, \$message);
+			goto RETURN_LOG;
+		}
+	}
+
+	$message = run_tla("cat-archive-log", $revision);
 	die "Can't get log of $revision from archive.\n"
 		. "Unexisting revision or system problems.\n"
 		unless $message;
+
+	RETURN_LOG:
 	return Arch::Log->new($message);
 }
 
