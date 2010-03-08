@@ -183,8 +183,8 @@ The following functions are available:
 B<arch_backend>,
 B<arch_backend_name>,
 B<arch_backend_version>,
-B<is_baz>,
 B<is_tla>,
+B<is_baz>,
 B<has_archive_setup_cmd>,
 B<has_file_diffs_cmd>,
 B<has_register_archive_name_arg>,
@@ -192,7 +192,10 @@ B<has_tree_version_dir_opt>,
 B<has_tree_id_cmd>,
 B<has_set_tree_version_cmd>,
 B<has_cache_feature>,
-B<get_cache_config>.
+B<get_cache_config>,
+B<has_commit_version_arg>,
+B<has_commit_files_separator>,
+B<has_revlib_patch_set_dir>.
 
 =over 4
 

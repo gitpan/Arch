@@ -5,7 +5,8 @@
 use FindBin;
 use lib "$FindBin::Bin/../perllib";
 
-use Test::More tests => 39;
+use Test::More tests => 40;
+
 use_ok("Arch::Util", "save_file", "load_file");
 use_ok("Arch::TempFiles");
 use_ok("Arch::Session");
@@ -17,7 +18,7 @@ die "Internal: Arch::TempFiles::dir didn't create dir\n" unless $dir && -d $dir;
 
 sub run_func (@) {
 	my $func = shift;
-	my $cmd = "$func('" . join("', '", map { ref($_) || $_ } @_) . "')";
+	my $cmd = "$func(" . join(", ", map { "'" . (ref($_) || $_) . "'" } @_) . ")";
 	$func = "Arch::Util::$func";
 	my ($result_assign, $result, @result) = ("");
 	if (defined wantarray && !wantarray) {
@@ -27,7 +28,7 @@ sub run_func (@) {
 		$result_assign = '@result = ';
 		$cmd .= " (list context)";
 	}
-	eval "$result_assign$func(\@_);";
+	eval "$result_assign$func(" . (@_ ? '@_' : '') . ");";
 	if ($@) {
 		fail($cmd . ": $@");
 	} else {
@@ -90,9 +91,13 @@ $fh->close;
 }
 
 my $arch_backend = run_func("arch_backend");
-run_func("run_tla", "-h");
-my $tla_output = run_func("run_tla", "--version");
-my @tla_output = run_func("run_tla", "--version");
-like($tla_output, qr/\b(Tom Lord|Arch|Bazaar|tla|baz)\b/, "check $arch_backend --version output (scalar)");
-ok(@tla_output > 0,               "check $arch_backend --version output (list)");
+my $is_tla_functional = run_func("is_tla_functional");
 
+SKIP: {
+	skip "No functional arch backend", 5 unless $is_tla_functional;
+	run_func("run_tla", "-h");
+	my $tla_output = run_func("run_tla", "--version");
+	my @tla_output = run_func("run_tla", "--version");
+	like($tla_output, qr/\b(Tom Lord|Arch|Bazaar|tla|baz)\b/, "check $arch_backend --version output (scalar)");
+	ok(@tla_output > 0,               "check $arch_backend --version output (list)");
+}

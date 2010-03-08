@@ -1,4 +1,4 @@
-version = 0.5.1
+version = 0.5.2
 release = 0.`date +%Y%m%d`
 cparams = ''  # configure params, not really used
 mparams = ''  # make params, like: 'CFLAGS="-O2"'

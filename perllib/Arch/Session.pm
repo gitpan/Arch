@@ -134,7 +134,9 @@ sub clear_cache ($;@) {
 	my $self = shift;
 	my @keys = @_;
 
-	@keys = qw(archives categories branches versions revisions revision_descs);
+	@keys = qw(archives categories branches versions revisions revision_descs)
+		unless @keys;
+
 	foreach (@keys) {
 		if (@_ && !exist $self->{$_}) {
 			warn __PACKAGE__ . "::clear_cache: unknown key ($_), ignoring\n";

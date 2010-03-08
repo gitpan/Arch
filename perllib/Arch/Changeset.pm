@@ -28,6 +28,8 @@ sub new ($$$) {
 	my $dir = shift || die "Arch::Changeset::new: no dir\n";
 	die "No changeset dir $dir for revision $revision\n" unless -d $dir;
 
+	$dir =~ s!/$!!;
+
 	my $self = {
 		revision   => $revision,
 		dir        => $dir,
@@ -82,7 +84,7 @@ sub get_patch ($$;$$) {
 		my $num_lines = $patch_content =~ s/\n/\n/g;
 		$num_lines += $has_end_line? 0: 1;
 		my $file = $patch_file;
-		$file =~ s!^$dir/[^/]+/!!s;
+		$file =~ s!^\Q$dir\E/[^/]+/!!s;
 		my ($file1, $file2, $line1, $line2, $prefix);
 		if ($change_type eq "new") {
 			$file1 = "/dev/null";

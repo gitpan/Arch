@@ -7,11 +7,18 @@ use strict;
 use FindBin;
 use lib "$FindBin::Bin/../perllib";
 
-use Test::More tests => 5;
+use Test::More;
+use Arch::Util qw(is_tla_functional);
+
 BEGIN {
+	plan skip_all => "No functional arch backend" unless is_tla_functional;
+	plan tests => 5;
+
+	# import constants at compile time
 	use_ok("Arch::Inventory", qw(:category :type));
-	use_ok("Arch::Tree");
 }
+
+use_ok("Arch::Tree");
 
 my $expected_entry_path = 'perllib/Arch/Tree.pm';
 my $expected_entry = {

@@ -31,6 +31,7 @@ WriteMakefile(
 	VERSION_FROM => 'perllib/Arch.pm',
 	ABSTRACT_FROM => 'perllib/Arch.pm',
 	AUTHOR => 'Mikhael Goikhman <migo@homemail.com>',
+	LICENSE => 'gpl',
 );
 
 open MANIFEST, "<MANIFEST";

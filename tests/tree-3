@@ -7,15 +7,17 @@ use strict;
 use FindBin;
 use lib "$FindBin::Bin/../perllib";
 
-use Test::More tests => 15;
+use Test::More;
+use Arch::Util qw(is_tla_functional);
 
-BEGIN {
-	use_ok("Arch::Tree");
-	use_ok("Arch::Util", "run_tla", "save_file");
-	use_ok("Arch::Backend", "has_archive_setup_cmd");
-	use_ok("Arch::TempFiles");
-	use_ok("Arch::Session");
-}
+plan skip_all => "No functional arch backend" unless is_tla_functional;
+plan tests => 15;
+
+use_ok("Arch::Tree");
+use_ok("Arch::Util", "run_tla", "save_file");
+use_ok("Arch::Backend", "has_archive_setup_cmd");
+use_ok("Arch::TempFiles");
+use_ok("Arch::Session");
 
 # setup testing environment
 my $TEMP     = Arch::TempFiles->new;

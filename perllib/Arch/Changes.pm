@@ -240,15 +240,15 @@ B<to_string>.
 
 Creates a new, initially empty, changes list.
 
-Typically this is done by one of L<Arch::Changeset>, L<Arch::Tree> or
-L<Arch::Log>.
+Typically it is called indirectly from method B<get_changes> in
+L<Arch::Changeset>, L<Arch::Tree> or L<Arch::Log> class.
 
 =item B<add> I<type> I<is_dir> I<arguments...>
 
 Adds a new change element to the list of changes.
 
-Typically this is done by one of L<Arch::Changeset>, L<Arch::Tree> or
-L<Arch::Log>.
+Typically it is called indirectly from method B<get_changes> in
+L<Arch::Changeset>, L<Arch::Tree> or L<Arch::Log> class.
 
 =item B<count>
 
@@ -256,7 +256,7 @@ Returns the number of change elements.
 
 =item B<get> I<num>
 
-Returns the I<num>th change element or all if I<num> is undefined.
+Returns the I<num>-th change element or all if I<num> is undefined.
 
 =item B<get_listing>
 

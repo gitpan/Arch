@@ -6,7 +6,12 @@ use Data::Dumper;
 use FindBin;
 use lib "$FindBin::Bin/../perllib";
 
-use Test::More tests => 20;
+use Test::More;
+use Arch::Util qw(is_tla_functional);
+
+plan skip_all => "No functional arch backend" unless is_tla_functional;
+plan tests => 20;
+
 use_ok("Arch::Registry");
 use_ok("Arch::Util", "run_tla");
 use_ok("Arch::Backend", "is_baz");

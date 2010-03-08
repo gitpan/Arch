@@ -248,7 +248,7 @@ Arch::Inventory - class representing a tree inventory
     print Arch::Inventory->to_string($inv->get_root_entry), "\n";
     print $inv->get_listing;
 
-or (most commonly)
+or (most commonly):
 
     use Arch::Tree;
 
@@ -335,7 +335,7 @@ Returns the inventory element for the base directory.
 The root entry always has the following properties:
 
     $root = {
-        category => TREE        # if {arch} exists, SOURCE otherwise
+        category => TREE,       # if {arch} exists, SOURCE otherwise
         untagged => 1,
         type     => DIRECTORY,
         path     => '',

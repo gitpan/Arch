@@ -56,7 +56,7 @@ sub htmlize ($) {
 
 sub dehtmlize ($) {
 	my $str = shift;
-	die "No content to htmlize" unless defined $str;
+	die "No content to dehtmlize" unless defined $str;
 
 	$str =~ s/&amp;/&/sg;
 	$str =~ s/&quot;/\"/sg;

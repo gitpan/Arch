@@ -5,7 +5,12 @@
 use FindBin;
 use lib "$FindBin::Bin/../perllib";
 
-use Test::More tests => 14;
+use Test::More;
+use Arch::Util qw(is_tla_functional);
+
+plan skip_all => "No functional arch backend" unless is_tla_functional;
+plan tests => 14;
+
 use_ok("Arch::Test::Framework");
 use_ok("Arch::Backend", "is_baz", "arch_backend_version");
 

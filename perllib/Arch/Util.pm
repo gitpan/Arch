@@ -28,6 +28,7 @@ use vars qw(@ISA @EXPORT_OK);
 @EXPORT_OK = qw(
 	arch_backend is_baz
 	run_pipe_from run_cmd run_tla
+	is_tla_functional
 	load_file save_file
 	copy_dir remove_dir setup_config_dir
 	standardize_date date2daysago date2age
@@ -45,7 +46,7 @@ sub run_pipe_from (@) {
 
 	# perl-5.005 does not pass compilation without "eval"...
 	my $pipe_success = $] >= 5.006?
-		eval qq{ open(PIPE, '-|', \@args) }: open(PIPE, "$args[0]|");
+		eval qq{ no warnings; open(PIPE, '-|', \@args) }: open(PIPE, "$args[0]|");
 	die "Can't start (@args): $!\n" unless $pipe_success;
 	return \*PIPE;
 }
@@ -67,6 +68,10 @@ sub run_tla (@) {
 	my $arg1 = shift || die;
 	unshift @_, $Arch::Backend::EXE, split(' ', $arg1);
 	goto \&run_cmd;
+}
+
+sub is_tla_functional () {
+	eval { run_tla("help --help") } ? 1 : 0;
 }
 
 sub load_file ($;$) {
@@ -297,6 +302,12 @@ B<adjacent_revision>.
 The system functions die on errors.
 
 =over 4
+
+=item B<is_tla_functional>
+
+Verify whether the system has a working arch backend installed (and
+possibly configured by environment variables, like TLA or ARCH_BACKEND),
+needed for this perl library to function.
 
 =item B<run_tla> I<subcommand_with_args>
 

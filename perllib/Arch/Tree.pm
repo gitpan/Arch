@@ -45,6 +45,7 @@ sub new ($;$%) {
 		dir => $root,
 		own_logs => $init{own_logs},
 		hide_ids => $init{hide_ids},
+		cache_logs => $init{cache_logs},
 	};
 
 	bless $self, $class;
@@ -121,6 +122,9 @@ sub get_log ($$) {
 	my $self = shift;
 	my $revision = shift || die;
 
+	return $self->{cached_logs}->{$revision}
+		if $self->{cached_logs}->{$revision};
+
 	my $message;
 	if ($self->{own_logs}) {
 		my $name = Arch::Name->new($revision);
@@ -135,7 +139,11 @@ sub get_log ($$) {
 		$message = run_tla("cat-log", "-d", $self->{dir}, $revision);
 	}
 	return undef unless $message;
-	return Arch::Log->new($message, hide_ids => $self->{hide_ids});
+
+	my $log = Arch::Log->new($message, hide_ids => $self->{hide_ids});
+	$self->{cached_logs}->{$revision} = $log
+		if $self->{cache_logs};
+	return $log;
 }
 
 sub get_logs ($;$) {
@@ -328,6 +336,8 @@ sub get_previous_revision ($;$) {
 sub get_ancestry_logs ($%) {
 	my $self = shift;
 	my %args = @_;
+
+	my $limit = $args{limit} || 0;
 	my $callback = $args{callback};
 	my $one_version = $args{one_version} || 0;
 	my $no_continuation = $args{no_continuation} || 0;
@@ -357,7 +367,7 @@ sub get_ancestry_logs ($%) {
 			$revision = $self->get_previous_revision($revision);
 		}
 		push @collected, $callback? $callback->($log): $log;
-		last unless $log;  # undefined by callback
+		last unless --$limit && $log;  # undefined by callback
 	}
 	return \@collected;
 }
@@ -375,6 +385,8 @@ sub get_history_revision_descs ($;$%) {
 	my $filepath = shift;
 	@_ = (one_version => $_[0]) if @_ == 1;  # be compatible until summer 2005
 	my %args = @_;
+
+	my $limit = delete $args{limit} || 0;
 	my $callback = delete $args{callback};
 
 	my ($is_dir, $changed);
@@ -412,7 +424,7 @@ sub get_history_revision_descs ($;$%) {
 			? $callback->($revision_desc, $log)
 			: $revision_desc;
 
-		$_[0] = undef unless $revision_desc;  # undefined by callback
+		$_[0] = undef unless --$limit && $revision_desc;  # undefined by callback
 		return @returned;
 	});
 }
@@ -610,7 +622,9 @@ sub clear_cache ($;@) {
 	my $self = shift;
 	my @keys = @_;
 
-	@keys = qw(missing_revision_descs missing_revisions);
+	@keys = qw(missing_revision_descs missing_revisions cached_logs)
+		unless @keys;
+
 	foreach (@keys) {
 		if (@_ && !exist $self->{$_}) {
 			warn __PACKAGE__ . "::clear_cache: unknown key ($_), ignoring\n";

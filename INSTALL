@@ -6,3 +6,6 @@ arch-perl may be installed like many other CPAN modules:
 	make install
 
 Optionally, the first command accepts PREFIX=/home/joe/perl option.
+
+Please note that you need to install tla (or its equivalent, like baz)
+to make this perl library useful.

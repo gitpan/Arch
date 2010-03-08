@@ -21,7 +21,7 @@ package Arch;
 
 use vars qw($VERSION);
 
-$VERSION = '0.5.1';
+$VERSION = '0.5.2';
 $VERSION = eval $VERSION;
 
 1;
@@ -34,7 +34,7 @@ Arch - GNU Arch Perl library
 
 =head1 SYNOPSIS 
 
-    use Arch 0.5.1;
+    use Arch 0.5.2;
 
     # perldoc Arch
     # axp man Arch
